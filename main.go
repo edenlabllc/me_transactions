@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/halturin/ergonode"
@@ -173,11 +175,40 @@ func (gs *goGenServ) Terminate(reason int, state interface{}) {
 }
 
 func init() {
-	flag.StringVar(&mongoURL, "mongo_url", "mongodb://localhost:27017/medical_events?replicaSet=replicaTest", "mongo connect url")
-	flag.StringVar(&SrvName, "gen_server", "mongo_transaction", "gen_server name")
-	flag.StringVar(&NodeName, "name", "examplenode@127.0.0.1", "node name")
-	flag.StringVar(&Cookie, "cookie", "123", "cookie for interaction with erlang cluster")
-	flag.IntVar(&EpmdPort, "epmd_port", 15151, "epmd port")
+	mongoURL = os.Getenv("MONGO_URL")
+	if mongoURL == "" {
+		flag.StringVar(&mongoURL, "mongo_url", "mongodb://localhost:27017/medical_events?replicaSet=replicaTest", "mongo connect url")
+	}
+	fmt.Printf("MONGO_URL: %s\n", mongoURL)
+
+	SrvName = os.Getenv("GEN_SERVER_NAME")
+	if SrvName == "" {
+		flag.StringVar(&SrvName, "gen_server", "mongo_transaction", "gen_server name")
+	}
+	fmt.Printf("GEN_SERVER_NAME: %s\n", SrvName)
+
+	NodeName = os.Getenv("NODE_NAME")
+	if NodeName == "" {
+		flag.StringVar(&NodeName, "name", "examplenode@127.0.0.1", "node name")
+	}
+	fmt.Printf("NODE_NAME: %s\n", NodeName)
+
+	Cookie = os.Getenv("ERLANG_COOKIE")
+	if Cookie == "" {
+		flag.StringVar(&Cookie, "cookie", "123", "cookie for interaction with erlang cluster")
+	}
+	fmt.Printf("ERLANG_COOKIE: %s\n", Cookie)
+
+	port := os.Getenv("EMPD_PORT")
+	if port == "" {
+		flag.IntVar(&EpmdPort, "epmd_port", 15151, "epmd port")
+	} else {
+		EpmdPort, err = strconv.Atoi(port)
+		if err != nil {
+			panic("Invalid empd port")
+		}
+	}
+	fmt.Printf("EMPD_PORT: %d\n", EpmdPort)
 }
 
 func main() {
