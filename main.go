@@ -15,6 +15,8 @@ import (
 	"github.com/halturin/ergonode/etf"
 	"github.com/mongodb/mongo-go-driver/bson"
 	"github.com/mongodb/mongo-go-driver/mongo"
+
+	"github.com/rs/zerolog/log"
 )
 
 // GenServer implementation structure
@@ -96,34 +98,45 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 
 	case string:
 		var operations []Operation
+		log.Debug().Msgf("Received message: %s", req)
 		json.Unmarshal([]byte(req), &operations)
 		client := inState.dbClient
 		ctx := inState.dbCtx
 
 		session, err := client.StartSession()
 		if err != nil {
+			log.Warn().Msgf("Failed to start session: %s", err)
 			replyTerm := etf.Term("Failed to start session")
 			reply = &replyTerm
 			return
 		}
+		log.Info().Msgf("Started session")
+
 		session.StartTransaction()
+		log.Info().Msgf("Started transaction")
 		defer session.EndSession(ctx)
 		for _, operation := range operations {
 			collection := client.Database("medical_events").Collection(operation.Collection)
-			if err != nil {
-				replyTerm := etf.Term("Failed to get collection")
-				reply = &replyTerm
-				return
-			}
+			log.Info().Msgf("Processing %s in %s collection", operation.Operation, operation.Collection)
 
 			switch operation.Operation {
 			case "insert":
-				data, _ := base64.StdEncoding.DecodeString(operation.Set)
+				data, err := base64.StdEncoding.DecodeString(operation.Set)
+				if err != nil {
+					log.Debug().Msgf("Invalid base64 string on insert: %s", operation.Set)
+					var buffer bytes.Buffer
+					buffer.WriteString("Invalid base64 string. ")
+					buffer.WriteString(err.Error())
+					replyTerm := etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
+					reply = &replyTerm
+					return
+				}
 
 				var f interface{}
 				bson.Unmarshal(data, &f)
 				a, err := collection.InsertOne(context.Background(), data)
 				if err != nil {
+					log.Warn().Msgf("Aborting transaction: %s", err.Error())
 					session.AbortTransaction(ctx)
 					var buffer bytes.Buffer
 					buffer.WriteString("Aborting transaction. ")
@@ -132,16 +145,35 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 					reply = &replyTerm
 					return
 				}
-				fmt.Printf("%s\n", a)
+				log.Debug().Msgf("Inserted: %s", a)
 			case "update_one":
-				filter, _ := base64.StdEncoding.DecodeString(operation.Filter)
-				set, _ := base64.StdEncoding.DecodeString(operation.Set)
+				filter, err := base64.StdEncoding.DecodeString(operation.Filter)
+				if err != nil {
+					log.Debug().Msgf("Invalid base64 string on filter update: %s", operation.Set)
+					var buffer bytes.Buffer
+					buffer.WriteString("Invalid base64 string. ")
+					buffer.WriteString(err.Error())
+					replyTerm := etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
+					reply = &replyTerm
+					return
+				}
+				set, err := base64.StdEncoding.DecodeString(operation.Set)
+				if err != nil {
+					log.Debug().Msgf("Invalid base64 string on set update: %s", operation.Set)
+					var buffer bytes.Buffer
+					buffer.WriteString("Invalid base64 string. ")
+					buffer.WriteString(err.Error())
+					replyTerm := etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
+					reply = &replyTerm
+					return
+				}
 
 				var f interface{}
 				bson.Unmarshal(filter, &f)
 				bson.Unmarshal(set, &f)
 				a, err := collection.UpdateOne(context.Background(), filter, set)
 				if err != nil {
+					log.Warn().Msgf("Aborting transaction. %s", err.Error())
 					session.AbortTransaction(ctx)
 					var buffer bytes.Buffer
 					buffer.WriteString("Aborting transaction. ")
@@ -150,7 +182,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 					reply = &replyTerm
 					return
 				}
-				fmt.Printf("Matched: %d, Modified: %d\n", a.MatchedCount, a.ModifiedCount)
+				log.Debug().Msgf("Matched: %d, Modified: %d", a.MatchedCount, a.ModifiedCount)
 			}
 		}
 
@@ -179,25 +211,21 @@ func init() {
 	if mongoURL == "" {
 		flag.StringVar(&mongoURL, "mongo_url", "mongodb://localhost:27017/medical_events?replicaSet=replicaTest", "mongo connect url")
 	}
-	fmt.Printf("MONGO_URL: %s\n", mongoURL)
 
 	SrvName = os.Getenv("GEN_SERVER_NAME")
 	if SrvName == "" {
 		flag.StringVar(&SrvName, "gen_server", "mongo_transaction", "gen_server name")
 	}
-	fmt.Printf("GEN_SERVER_NAME: %s\n", SrvName)
 
 	NodeName = os.Getenv("NODE_NAME")
 	if NodeName == "" {
 		flag.StringVar(&NodeName, "name", "examplenode@127.0.0.1", "node name")
 	}
-	fmt.Printf("NODE_NAME: %s\n", NodeName)
 
 	Cookie = os.Getenv("ERLANG_COOKIE")
 	if Cookie == "" {
 		flag.StringVar(&Cookie, "cookie", "123", "cookie for interaction with erlang cluster")
 	}
-	fmt.Printf("ERLANG_COOKIE: %s\n", Cookie)
 
 	port := os.Getenv("EMPD_PORT")
 	if port == "" {
@@ -208,7 +236,8 @@ func init() {
 			panic("Invalid empd port")
 		}
 	}
-	fmt.Printf("EMPD_PORT: %d\n", EpmdPort)
+
+	log.Info().Msgf(`Starting with config: MONGO_URL=%s; GEN_SERVER_NAME=%s; NODE_NAME=%s; ERLANG_COOKIE=%s; EMPD_PORT=%d`, mongoURL, SrvName, NodeName, Cookie, EpmdPort)
 }
 
 func main() {
@@ -216,6 +245,7 @@ func main() {
 
 	// Initialize new node with given name and cookie
 	n := ergonode.Create(NodeName, uint16(EpmdPort), Cookie)
+	log.Info().Msg("Started erlang node")
 
 	// Create channel to receive message when main process should be stopped
 	completeChan := make(chan bool)
@@ -223,7 +253,7 @@ func main() {
 	gs := new(goGenServ)
 	// Spawn process with one arguments
 	n.Spawn(gs, completeChan)
-	fmt.Println("Started node")
+	log.Info().Msg("Spawned gen server process")
 
 	// Wait to stop
 	<-completeChan
