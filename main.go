@@ -82,6 +82,7 @@ func (gs *goGenServ) HandleCast(message *etf.Term, state interface{}) (code int,
 
 // HandleCall serves incoming messages sending via gen_server:call
 func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interface{}) (code int, reply *etf.Term, stateout interface{}) {
+	log.Debug().Msg("Received new message")
 	inState := state.(State)
 	stateout = state
 	code = 1
@@ -93,7 +94,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 		switch string(req) {
 		case "pid":
 			replyTerm = etf.Term(etf.Pid(gs.Self))
-			reply = &replyTerm
+			return 1, reply, state
 		}
 
 	case string:
@@ -108,7 +109,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 			log.Warn().Msgf("Failed to start session: %s", err)
 			replyTerm := etf.Term("Failed to start session")
 			reply = &replyTerm
-			return
+			return 1, reply, state
 		}
 		log.Info().Msgf("Started session")
 
@@ -129,7 +130,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 					buffer.WriteString(err.Error())
 					replyTerm := etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
 					reply = &replyTerm
-					return
+					return 1, reply, state
 				}
 
 				var f interface{}
@@ -143,7 +144,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 					buffer.WriteString(err.Error())
 					replyTerm := etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
 					reply = &replyTerm
-					return
+					return 1, reply, state
 				}
 				log.Debug().Msgf("Inserted: %s", a)
 			case "update_one":
@@ -155,7 +156,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 					buffer.WriteString(err.Error())
 					replyTerm := etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
 					reply = &replyTerm
-					return
+					return 1, reply, state
 				}
 				set, err := base64.StdEncoding.DecodeString(operation.Set)
 				if err != nil {
@@ -165,7 +166,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 					buffer.WriteString(err.Error())
 					replyTerm := etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
 					reply = &replyTerm
-					return
+					return 1, reply, state
 				}
 
 				var f interface{}
@@ -180,7 +181,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 					buffer.WriteString(err.Error())
 					replyTerm := etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
 					reply = &replyTerm
-					return
+					return 1, reply, state
 				}
 				log.Debug().Msgf("Matched: %d, Modified: %d", a.MatchedCount, a.ModifiedCount)
 			}
@@ -190,7 +191,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 		result := etf.Term(etf.Atom("ok"))
 		reply = &result
 	}
-	return
+	return 1, reply, state
 }
 
 // HandleInfo serves all another incoming messages (Pid ! message)
