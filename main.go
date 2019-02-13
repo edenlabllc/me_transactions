@@ -94,7 +94,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 		switch string(req) {
 		case "pid":
 			replyTerm = etf.Term(etf.Pid(gs.Self))
-			return 1, reply, state
+			return
 		}
 
 	case string:
@@ -107,9 +107,8 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 		session, err := client.StartSession()
 		if err != nil {
 			log.Warn().Msgf("Failed to start session: %s", err)
-			replyTerm := etf.Term("Failed to start session")
-			reply = &replyTerm
-			return 1, reply, state
+			replyTerm = etf.Term("Failed to start session")
+			return
 		}
 		log.Info().Msgf("Started session")
 
@@ -128,9 +127,8 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 					var buffer bytes.Buffer
 					buffer.WriteString("Invalid base64 string. ")
 					buffer.WriteString(err.Error())
-					replyTerm := etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
-					reply = &replyTerm
-					return 1, reply, state
+					replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
+					return
 				}
 
 				var f interface{}
@@ -142,9 +140,8 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 					var buffer bytes.Buffer
 					buffer.WriteString("Aborting transaction. ")
 					buffer.WriteString(err.Error())
-					replyTerm := etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
-					reply = &replyTerm
-					return 1, reply, state
+					replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
+					return
 				}
 				log.Debug().Msgf("Inserted: %s", a)
 			case "update_one":
@@ -154,9 +151,8 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 					var buffer bytes.Buffer
 					buffer.WriteString("Invalid base64 string. ")
 					buffer.WriteString(err.Error())
-					replyTerm := etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
-					reply = &replyTerm
-					return 1, reply, state
+					replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
+					return
 				}
 				set, err := base64.StdEncoding.DecodeString(operation.Set)
 				if err != nil {
@@ -164,9 +160,8 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 					var buffer bytes.Buffer
 					buffer.WriteString("Invalid base64 string. ")
 					buffer.WriteString(err.Error())
-					replyTerm := etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
-					reply = &replyTerm
-					return 1, reply, state
+					replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
+					return
 				}
 
 				var f interface{}
@@ -179,19 +174,17 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 					var buffer bytes.Buffer
 					buffer.WriteString("Aborting transaction. ")
 					buffer.WriteString(err.Error())
-					replyTerm := etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
-					reply = &replyTerm
-					return 1, reply, state
+					replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
+					return
 				}
 				log.Debug().Msgf("Matched: %d, Modified: %d", a.MatchedCount, a.ModifiedCount)
 			}
 		}
 
 		session.CommitTransaction(ctx)
-		result := etf.Term(etf.Atom("ok"))
-		reply = &result
+		replyTerm = etf.Term(etf.Atom("ok"))
 	}
-	return 1, reply, state
+	return
 }
 
 // HandleInfo serves all another incoming messages (Pid ! message)
