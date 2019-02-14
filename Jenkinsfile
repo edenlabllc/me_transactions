@@ -29,6 +29,9 @@ spec:
   containers:
   - name: docker
     image: lakone/docker:18.09-alpine3.9
+    volumeMounts:
+    - mountPath: /var/run/docker.sock
+      name: volume
     command:
     - cat
     tty: true
@@ -81,6 +84,9 @@ spec:
   containers:
   - name: docker
     image: lakone/docker:18.09-alpine3.9
+    volumeMounts:
+    - mountPath: /var/run/docker.sock
+      name: volume
     command:
     - cat
     tty: true
