@@ -128,7 +128,7 @@ spec:
             sh 'docker push edenlabllc/me_transactions:develop'
           }
         }
-        container(name: 'docker', shell: '/bin/sh') {
+        container(name: 'kubectl', shell: '/bin/sh') {
           sh 'kubectl delete pod -n me -l app=me-transactions'
         }
       }
