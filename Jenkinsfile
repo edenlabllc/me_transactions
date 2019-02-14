@@ -54,7 +54,14 @@ spec:
       steps {
         container(name: 'docker', shell: '/bin/sh') {
           sh 'docker build --tag "edenlabllc/me_transactions:$GIT_COMMIT" --build-arg APP_NAME=${APP_NAME} .'
-          sh 'docker rmi edenlabllc/me_transactions:$GIT_COMMIT'
+        }
+      }
+      post {
+        always {
+          container(name: 'docker', shell: '/bin/sh') {
+            sh 'echo " ---- step: Remove docker image from host ---- ";'
+            sh 'docker rmi edenlabllc/me_transactions:$GIT_COMMIT'
+          }
         }
       }
     }
@@ -116,12 +123,21 @@ spec:
           sh 'docker build --tag "edenlabllc/me_transactions:develop" --build-arg APP_NAME=${APP_NAME} .'
           withCredentials(bindings: [usernamePassword(credentialsId: '8232c368-d5f5-4062-b1e0-20ec13b0d47b', usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
             sh 'echo " ---- step: Push docker image ---- ";'
+            sh 'echo "Logging in into Docker Hub";'
+            sh 'echo ${DOCKER_PASSWORD} | docker login -u ${DOCKER_USERNAME} --password-stdin'
             sh 'docker push edenlabllc/me_transactions:develop'
-            sh 'docker rmi edenlabllc/me_transactions:develop'
           }
         }
         container(name: 'docker', shell: '/bin/sh') {
           sh 'kubectl delete pod -n me -l app=me-transactions'
+        }
+      }
+      post {
+        always {
+          container(name: 'docker', shell: '/bin/sh') {
+            sh 'echo " ---- step: Remove docker image from host ---- ";'
+            sh 'docker rmi edenlabllc/me_transactions:develop'
+          }
         }
       }
     }
