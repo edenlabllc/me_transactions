@@ -1,7 +1,64 @@
 pipeline {
   agent none
   stages {
+    stage('Build') {
+    when {
+        not {
+            branch 'develop'
+        }
+    }
+      environment {
+        APP_NAME = 'me_transactions'
+      }
+      agent {
+        kubernetes {
+          label 'me-trans-build'
+          defaultContainer 'jnlp'
+          yaml '''
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    stage: build
+spec:
+  tolerations:
+  - key: "node"
+    operator: "Equal"
+    value: "ci"
+    effect: "NoSchedule"
+  containers:
+  - name: docker
+    image: lakone/docker:18.09-alpine3.9
+    command:
+    - cat
+    tty: true
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "250m"
+      limits:
+        memory: "384Mi"
+        cpu: "500m"
+  nodeSelector:
+    node: ci
+  volumes:
+  - name: volume
+    hostPath:
+      path: /var/run/docker.sock
+'''
+        }
+      }
+        steps {
+          container(name: 'docker', shell: '/bin/sh') {
+            sh 'docker build --tag "edenlabllc/me_transactions:$GIT_COMMIT" --build-arg APP_NAME=${APP_NAME} .'
+            sh 'docker rmi edenlabllc/me_transactions:$GIT_COMMIT'
+          }
+        }
+    }
     stage('Build and deploy') {
+        when {
+            branch 'develop'
+        }
       environment {
         APP_NAME = 'me_transactions'
       }
