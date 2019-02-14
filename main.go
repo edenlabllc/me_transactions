@@ -97,92 +97,100 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 			return
 		}
 
-	case string:
-		var operations []Operation
-		log.Debug().Msgf("Received message: %s", req)
-		json.Unmarshal([]byte(req), &operations)
-		client := inState.dbClient
-		ctx := inState.dbCtx
-
-		session, err := client.StartSession()
-		if err != nil {
-			log.Warn().Msgf("Failed to start session: %s", err)
-			replyTerm = etf.Term("Failed to start session")
-			return
-		}
-		log.Info().Msgf("Started session")
-
-		session.StartTransaction()
-		log.Info().Msgf("Started transaction")
-		defer session.EndSession(ctx)
-		for _, operation := range operations {
-			collection := client.Database("medical_events").Collection(operation.Collection)
-			log.Info().Msgf("Processing %s in %s collection", operation.Operation, operation.Collection)
-
-			switch operation.Operation {
-			case "insert":
-				data, err := base64.StdEncoding.DecodeString(operation.Set)
-				if err != nil {
-					log.Debug().Msgf("Invalid base64 string on insert: %s", operation.Set)
-					var buffer bytes.Buffer
-					buffer.WriteString("Invalid base64 string. ")
-					buffer.WriteString(err.Error())
-					replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
-					return
-				}
-
-				var f interface{}
-				bson.Unmarshal(data, &f)
-				a, err := collection.InsertOne(context.Background(), data)
-				if err != nil {
-					log.Warn().Msgf("Aborting transaction: %s", err.Error())
-					session.AbortTransaction(ctx)
-					var buffer bytes.Buffer
-					buffer.WriteString("Aborting transaction. ")
-					buffer.WriteString(err.Error())
-					replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
-					return
-				}
-				log.Debug().Msgf("Inserted: %s", a)
-			case "update_one":
-				filter, err := base64.StdEncoding.DecodeString(operation.Filter)
-				if err != nil {
-					log.Debug().Msgf("Invalid base64 string on filter update: %s", operation.Set)
-					var buffer bytes.Buffer
-					buffer.WriteString("Invalid base64 string. ")
-					buffer.WriteString(err.Error())
-					replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
-					return
-				}
-				set, err := base64.StdEncoding.DecodeString(operation.Set)
-				if err != nil {
-					log.Debug().Msgf("Invalid base64 string on set update: %s", operation.Set)
-					var buffer bytes.Buffer
-					buffer.WriteString("Invalid base64 string. ")
-					buffer.WriteString(err.Error())
-					replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
-					return
-				}
-
-				var f interface{}
-				bson.Unmarshal(filter, &f)
-				bson.Unmarshal(set, &f)
-				a, err := collection.UpdateOne(context.Background(), filter, set)
-				if err != nil {
-					log.Warn().Msgf("Aborting transaction. %s", err.Error())
-					session.AbortTransaction(ctx)
-					var buffer bytes.Buffer
-					buffer.WriteString("Aborting transaction. ")
-					buffer.WriteString(err.Error())
-					replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
-					return
-				}
-				log.Debug().Msgf("Matched: %d, Modified: %d", a.MatchedCount, a.ModifiedCount)
+	case etf.Tuple:
+		if len(req) == 3 {
+			args := req[2].(string)
+			var operations []Operation
+			log.Debug().Msgf("Received message: %s", args)
+			json.Unmarshal([]byte(args), &operations)
+			if len(operations) == 0 {
+				replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), "No valid operations"})
+				return
 			}
+			client := inState.dbClient
+			ctx := inState.dbCtx
+
+			session, err := client.StartSession()
+			if err != nil {
+				log.Warn().Msgf("Failed to start session: %s", err)
+				replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), "Failed to start session"})
+				return
+			}
+			log.Info().Msgf("Started session")
+
+			session.StartTransaction()
+			log.Info().Msgf("Started transaction")
+			defer session.EndSession(ctx)
+			for _, operation := range operations {
+				collection := client.Database("medical_events").Collection(operation.Collection)
+				log.Info().Msgf("Processing %s in %s collection", operation.Operation, operation.Collection)
+
+				switch operation.Operation {
+				case "insert":
+					data, err := base64.StdEncoding.DecodeString(operation.Set)
+					if err != nil {
+						log.Debug().Msgf("Invalid base64 string on insert: %s", operation.Set)
+						var buffer bytes.Buffer
+						buffer.WriteString("Invalid base64 string. ")
+						buffer.WriteString(err.Error())
+						replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
+						return
+					}
+
+					var f interface{}
+					bson.Unmarshal(data, &f)
+					a, err := collection.InsertOne(context.Background(), data)
+					if err != nil {
+						log.Warn().Msgf("Aborting transaction: %s", err.Error())
+						session.AbortTransaction(ctx)
+						var buffer bytes.Buffer
+						buffer.WriteString("Aborting transaction. ")
+						buffer.WriteString(err.Error())
+						replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
+						return
+					}
+					log.Debug().Msgf("Inserted: %s", a)
+				case "update_one":
+					filter, err := base64.StdEncoding.DecodeString(operation.Filter)
+					if err != nil {
+						log.Debug().Msgf("Invalid base64 string on filter update: %s", operation.Set)
+						var buffer bytes.Buffer
+						buffer.WriteString("Invalid base64 string. ")
+						buffer.WriteString(err.Error())
+						replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
+						return
+					}
+					set, err := base64.StdEncoding.DecodeString(operation.Set)
+					if err != nil {
+						log.Debug().Msgf("Invalid base64 string on set update: %s", operation.Set)
+						var buffer bytes.Buffer
+						buffer.WriteString("Invalid base64 string. ")
+						buffer.WriteString(err.Error())
+						replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
+						return
+					}
+
+					var f interface{}
+					bson.Unmarshal(filter, &f)
+					bson.Unmarshal(set, &f)
+					a, err := collection.UpdateOne(context.Background(), filter, set)
+					if err != nil {
+						log.Warn().Msgf("Aborting transaction. %s", err.Error())
+						session.AbortTransaction(ctx)
+						var buffer bytes.Buffer
+						buffer.WriteString("Aborting transaction. ")
+						buffer.WriteString(err.Error())
+						replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
+						return
+					}
+					log.Debug().Msgf("Matched: %d, Modified: %d", a.MatchedCount, a.ModifiedCount)
+				}
+			}
+
+			session.CommitTransaction(ctx)
+			replyTerm = etf.Term(etf.Atom("ok"))
 		}
 
-		session.CommitTransaction(ctx)
-		replyTerm = etf.Term(etf.Atom("ok"))
 	}
 	return
 }
