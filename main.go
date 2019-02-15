@@ -122,7 +122,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 			log.Info().Msgf("Started transaction")
 			defer session.EndSession(ctx)
 			for _, operation := range operations {
-				collection := client.Database("medical_events").Collection(operation.Collection)
+				collection := client.Database("medical_data").Collection(operation.Collection)
 				log.Info().Msgf("Processing %s in %s collection", operation.Operation, operation.Collection)
 
 				switch operation.Operation {
