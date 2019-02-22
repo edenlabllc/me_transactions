@@ -96,7 +96,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 		}
 
 	case etf.Tuple:
-		if len(req) == 3 {
+		if len(req) == 4 {
 			args := req[2].(string)
 			var operations []Operation
 			log.Debug().Msgf("Received message: %s", args)
