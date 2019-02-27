@@ -15,6 +15,7 @@ import (
 	"github.com/mongodb/mongo-go-driver/bson"
 	"github.com/mongodb/mongo-go-driver/mongo"
 
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
@@ -98,6 +99,9 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 	case etf.Tuple:
 		if len(req) == 4 {
 			args := req[2].(string)
+			requestID := req[3].(string)
+			log.Logger = log.With().Str("request_id", requestID).Logger()
+
 			var operations []Operation
 			log.Debug().Msgf("Received message: %s", args)
 			json.Unmarshal([]byte(args), &operations)
@@ -250,6 +254,9 @@ func init() {
 }
 
 func main() {
+	zerolog.LevelFieldName = "severity"
+	zerolog.MessageFieldName = "log"
+
 	flag.Parse()
 
 	// Initialize new node with given name and cookie
