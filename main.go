@@ -81,7 +81,6 @@ func (gs *goGenServ) HandleCast(message *etf.Term, state interface{}) (code int,
 
 // HandleCall serves incoming messages sending via gen_server:call
 func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interface{}) (code int, reply *etf.Term, stateout interface{}) {
-	log.Debug().Msg("Received new message")
 	inState := state.(State)
 	stateout = state
 	code = 1
@@ -100,10 +99,10 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 		if len(req) == 4 {
 			args := req[2].(string)
 			requestID := req[3].(string)
-			log.Logger = log.With().Str("request_id", requestID).Logger()
+			logger := log.With().Str("request_id", requestID).Logger()
 
 			var operations []Operation
-			log.Debug().Msgf("Received message: %s", args)
+			logger.Debug().Msgf("Received message: %s", args)
 			json.Unmarshal([]byte(args), &operations)
 			if len(operations) == 0 {
 				replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), "No valid operations"})
@@ -114,28 +113,28 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 
 			session, err := client.StartSession()
 			if err != nil {
-				log.Warn().Msgf("Failed to start session: %s", err)
+				logger.Warn().Msgf("Failed to start session: %s", err)
 				replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), "Failed to start session"})
 				return
 			}
-			log.Info().Msgf("Started session")
+			logger.Info().Msgf("Started session")
 
 			database := client.Database("medical_data")
 
 			err = mongo.WithSession(ctx, session, func(sctx mongo.SessionContext) error {
 				// Start a transaction in a session
 				sctx.StartTransaction()
-				log.Info().Msgf("Started transaction")
+				logger.Info().Msgf("Started transaction")
 
 				for _, operation := range operations {
 					collection := database.Collection(operation.Collection)
-					log.Info().Msgf("Processing %s in %s collection", operation.Operation, operation.Collection)
+					logger.Info().Msgf("Processing %s in %s collection", operation.Operation, operation.Collection)
 
 					switch operation.Operation {
 					case "insert":
 						data, err := base64.StdEncoding.DecodeString(operation.Set)
 						if err != nil {
-							log.Debug().Msgf("Invalid base64 string on insert: %s", operation.Set)
+							logger.Debug().Msgf("Invalid base64 string on insert: %s", operation.Set)
 							var buffer bytes.Buffer
 							buffer.WriteString("Invalid base64 string. ")
 							buffer.WriteString(err.Error())
@@ -147,7 +146,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 						bson.Unmarshal(data, &f)
 						a, err := collection.InsertOne(sctx, data)
 						if err != nil {
-							log.Warn().Msgf("Aborting transaction: %s", err.Error())
+							logger.Warn().Msgf("Aborting transaction: %s", err.Error())
 							session.AbortTransaction(sctx)
 							var buffer bytes.Buffer
 							buffer.WriteString("Aborting transaction. ")
@@ -155,11 +154,11 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 							replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
 							return err
 						}
-						log.Debug().Msgf("Inserted: %s", a)
+						logger.Debug().Msgf("Inserted: %s", a)
 					case "update_one":
 						filter, err := base64.StdEncoding.DecodeString(operation.Filter)
 						if err != nil {
-							log.Debug().Msgf("Invalid base64 string on filter update: %s", operation.Set)
+							logger.Debug().Msgf("Invalid base64 string on filter update: %s", operation.Set)
 							var buffer bytes.Buffer
 							buffer.WriteString("Invalid base64 string. ")
 							buffer.WriteString(err.Error())
@@ -168,7 +167,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 						}
 						set, err := base64.StdEncoding.DecodeString(operation.Set)
 						if err != nil {
-							log.Debug().Msgf("Invalid base64 string on set update: %s", operation.Set)
+							logger.Debug().Msgf("Invalid base64 string on set update: %s", operation.Set)
 							var buffer bytes.Buffer
 							buffer.WriteString("Invalid base64 string. ")
 							buffer.WriteString(err.Error())
@@ -181,7 +180,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 						bson.Unmarshal(set, &f)
 						a, err := collection.UpdateOne(sctx, filter, set)
 						if err != nil {
-							log.Warn().Msgf("Aborting transaction. %s", err.Error())
+							logger.Warn().Msgf("Aborting transaction. %s", err.Error())
 							session.AbortTransaction(sctx)
 							var buffer bytes.Buffer
 							buffer.WriteString("Aborting transaction. ")
@@ -189,7 +188,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 							replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
 							return err
 						}
-						log.Debug().Msgf("Matched: %d, Modified: %d", a.MatchedCount, a.ModifiedCount)
+						logger.Debug().Msgf("Matched: %d, Modified: %d", a.MatchedCount, a.ModifiedCount)
 					}
 				}
 
@@ -256,6 +255,8 @@ func init() {
 func main() {
 	zerolog.LevelFieldName = "severity"
 	zerolog.MessageFieldName = "log"
+	zerolog.CallerFieldName = "sourceLocation"
+	log.Logger = log.With().Caller().Logger()
 
 	flag.Parse()
 
