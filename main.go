@@ -113,9 +113,9 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 				}
 				switch operation.Operation {
 				case "insert":
-					logMessage.WriteString(fmt.Sprintf("{collection: %s, operation: %s}", operation.Collection, operation.Collection))
+					logMessage.WriteString(fmt.Sprintf("{collection: %s, operation: %s}", operation.Collection, operation.Operation))
 				case "update_one":
-					logMessage.WriteString(fmt.Sprintf("{collection: %s, operation: %s, filter: %s}", operation.Collection, operation.Collection, operation.Filter))
+					logMessage.WriteString(fmt.Sprintf("{collection: %s, operation: %s, filter: %s}", operation.Collection, operation.Operation, operation.Filter))
 				}
 			}
 			logMessage.WriteString("]")
