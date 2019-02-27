@@ -15,6 +15,7 @@ import (
 	"github.com/mongodb/mongo-go-driver/bson"
 	"github.com/mongodb/mongo-go-driver/mongo"
 
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
@@ -250,6 +251,9 @@ func init() {
 }
 
 func main() {
+	zerolog.LevelFieldName = "severity"
+	zerolog.MessageFieldName = "log"
+
 	flag.Parse()
 
 	// Initialize new node with given name and cookie
