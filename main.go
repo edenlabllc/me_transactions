@@ -99,6 +99,9 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 	case etf.Tuple:
 		if len(req) == 4 {
 			args := req[2].(string)
+			requestID := req[3].(string)
+			log.Logger = log.With().Str("request_id", requestID).Logger()
+
 			var operations []Operation
 			log.Debug().Msgf("Received message: %s", args)
 			json.Unmarshal([]byte(args), &operations)
