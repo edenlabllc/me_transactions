@@ -272,8 +272,6 @@ func init() {
 	if LogLevel == "" {
 		flag.StringVar(&LogLevel, "log_level", "info", "log level")
 	}
-
-	log.Info().Msgf(`Starting with config: MONGO_URL=%s; GEN_SERVER_NAME=%s; NODE_NAME=%s; ERLANG_COOKIE=%s; EMPD_PORT=%d`, mongoURL, SrvName, NodeName, Cookie, EpmdPort)
 }
 
 func main() {
