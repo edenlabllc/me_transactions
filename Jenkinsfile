@@ -49,11 +49,6 @@ metadata:
   labels:
     stage: build
 spec:
-  tolerations:
-  - key: "node"
-    operator: "Equal"
-    value: "ci"
-    effect: "NoSchedule"
   containers:
   - name: docker
     image: lakone/docker:18.09-alpine3.9
