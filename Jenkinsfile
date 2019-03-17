@@ -42,7 +42,7 @@ pipeline {
         kubernetes {
           label 'me-trans-build'
           defaultContainer 'jnlp'
-          yaml '''
+          yaml """
 apiVersion: v1
 kind: Pod
 metadata:
@@ -78,7 +78,7 @@ spec:
   - name: volume
     hostPath:
       path: /var/run/docker.sock
-'''
+"""
         }
       }
       steps {
@@ -106,7 +106,7 @@ spec:
         kubernetes {
           label 'me-trans-build'
           defaultContainer 'jnlp'
-          yaml '''
+          yaml """
 apiVersion: v1
 kind: Pod
 metadata:
@@ -149,7 +149,7 @@ spec:
       path: /var/run/docker.sock
   nodeSelector:
     cloud.google.com/gke-nodepool: $PROJECT_NAME       
-'''
+"""
         }
       }
       steps {
