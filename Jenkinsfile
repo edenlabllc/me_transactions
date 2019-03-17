@@ -1,7 +1,7 @@
 pipeline {
   agent none
   environment {
-    PROJECT_NAME = 'me_transactions'    
+    PROJECT_NAME = 'me-transactions'    
     APP_NAME = 'me_transactions'
   }
   stages {
