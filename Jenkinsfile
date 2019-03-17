@@ -192,6 +192,7 @@ spec:
           withCredentials([file(credentialsId: 'e7e3e6df-8ef5-4738-a4d5-f56bb02a8bb2', variable: 'KEYFILE')]) {
             checkout scm
             sh 'apk update && apk add curl bash'
+            sh 'sleep 70'
             sh 'gcloud auth activate-service-account jenkins-pool@ehealth-162117.iam.gserviceaccount.com --key-file=${KEYFILE} --project=ehealth-162117'
             sh 'curl -s https://raw.githubusercontent.com/edenlabllc/ci-utils/umbrella_jenkins_new/delete_instance.sh -o delete_instance.sh; bash ./delete_instance.sh'
           }
