@@ -3,6 +3,7 @@ pipeline {
   environment {
     PROJECT_NAME = 'me-transactions'    
     APP_NAME = 'me_transactions'
+    INSTANCE_TYPE = 'n1-highmem-8'    
   }
   stages {
     stage('Prepare instance') {
