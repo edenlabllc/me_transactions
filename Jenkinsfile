@@ -1,34 +1,64 @@
 pipeline {
   agent none
+  environment {
+    PROJECT_NAME = 'me-transactions'    
+    APP_NAME = 'me_transactions'
+    INSTANCE_TYPE = 'n1-highmem-8'    
+  }
   stages {
-    stage('Build') {
-      when {
-        not {
-          branch 'develop'
+    stage('Prepare instance') {
+      agent {
+        kubernetes {
+          label 'create-instance'
+          defaultContainer 'jnlp'
+          instanceCap '4'
         }
       }
-      environment {
-        APP_NAME = 'me_transactions'
+      steps {
+        container(name: 'gcloud', shell: '/bin/sh') {
+          sh 'apk update && apk add curl bash'
+          sh 'env'
+          withCredentials([file(credentialsId: 'e7e3e6df-8ef5-4738-a4d5-f56bb02a8bb2', variable: 'KEYFILE')]) {
+            sh 'gcloud auth activate-service-account jenkins-pool@ehealth-162117.iam.gserviceaccount.com --key-file=${KEYFILE} --project=ehealth-162117'
+            sh 'curl -s https://raw.githubusercontent.com/edenlabllc/ci-utils/umbrella_jenkins_new/create_instance.sh -o create_instance.sh; bash ./create_instance.sh'
+          }
+          slackSend (color: '#8E24AA', message: "Instance for ${GIT_URL[19..-5]}@$GIT_BRANCH created")
+        }
       }
+      post { 
+        success {
+          slackSend (color: 'good', message: "Build <${RUN_CHANGES_DISPLAY_URL[0..-8]}status|#$BUILD_NUMBER> (<${GIT_URL[0..-5]}/commit/$GIT_COMMIT|${GIT_COMMIT.take(7)}>) of ${GIT_URL[19..-5]}@$GIT_BRANCH by $GIT_COMMITTER_NAME STARTED")
+        }
+        failure {
+          slackSend (color: 'danger', message: "Build <${RUN_CHANGES_DISPLAY_URL[0..-8]}status|#$BUILD_NUMBER> (<${GIT_URL[0..-5]}/commit/$GIT_COMMIT|${GIT_COMMIT.take(7)}>) of ${GIT_URL[19..-5]}@$GIT_BRANCH by $GIT_COMMITTER_NAME FAILED to start")
+        }
+        aborted {
+          slackSend (color: 'warning', message: "Build <${RUN_CHANGES_DISPLAY_URL[0..-8]}status|#$BUILD_NUMBER> (<${GIT_URL[0..-5]}/commit/$GIT_COMMIT|${GIT_COMMIT.take(7)}>) of ${GIT_URL[19..-5]}@$GIT_BRANCH by $GIT_COMMITTER_NAME ABORTED before start")
+        }
+      }
+    }
+    stage('Build') {
       agent {
         kubernetes {
           label 'me-trans-build'
           defaultContainer 'jnlp'
-          yaml '''
+          yaml """
 apiVersion: v1
 kind: Pod
 metadata:
   labels:
     stage: build
 spec:
-  tolerations:
-  - key: "node"
-    operator: "Equal"
-    value: "ci"
-    effect: "NoSchedule"
   containers:
   - name: docker
     image: lakone/docker:18.09-alpine3.9
+    resources:
+      limits:
+        cpu: 1
+        memory: 2048Mi
+      requests:
+        cpu: 200m
+        memory: 256Mi     
     volumeMounts:
     - mountPath: /var/run/docker.sock
       name: volume
@@ -43,12 +73,12 @@ spec:
         memory: "384Mi"
         cpu: "500m"
   nodeSelector:
-    node: ci
+    cloud.google.com/gke-nodepool: $PROJECT_NAME
   volumes:
   - name: volume
     hostPath:
       path: /var/run/docker.sock
-'''
+"""
         }
       }
       steps {
@@ -65,7 +95,7 @@ spec:
         }
       }
     }
-    stage('Build and deploy') {
+    stage('Deploy') {
       when {
         branch 'develop'
       }
@@ -76,21 +106,16 @@ spec:
         kubernetes {
           label 'me-trans-build'
           defaultContainer 'jnlp'
-          yaml '''
+          yaml """
 apiVersion: v1
 kind: Pod
 metadata:
   labels:
     stage: build
 spec:
-  tolerations:
-  - key: "node"
-    operator: "Equal"
-    value: "ci"
-    effect: "NoSchedule"
   containers:
   - name: docker
-    image: lakone/docker:18.09-alpine3.9
+    image: lakone/docker:18.09-alpine3.9    
     volumeMounts:
     - mountPath: /var/run/docker.sock
       name: volume
@@ -106,6 +131,13 @@ spec:
         cpu: "500m"
   - name: kubectl
     image: lachlanevenson/k8s-kubectl:v1.13.2
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 200m
+        memory: 256Mi     
     command:
     - cat
     tty: true
@@ -115,7 +147,9 @@ spec:
   - name: volume
     hostPath:
       path: /var/run/docker.sock
-'''
+  nodeSelector:
+    cloud.google.com/gke-nodepool: $PROJECT_NAME       
+"""
         }
       }
       steps {
@@ -142,15 +176,28 @@ spec:
       }
     }
   }
-  post { 
+  post {
     success {
-      slackSend (color: 'good', message: "SUCCESSFUL: Job - ${env.JOB_NAME} ${env.BUILD_NUMBER} (<${env.BUILD_URL}|Open>) success in ${currentBuild.durationString}")
+      slackSend (color: 'good', message: "Build <${RUN_CHANGES_DISPLAY_URL[0..-8]}status|#$BUILD_NUMBER> of ${JOB_NAME} passed in ${currentBuild.durationString}")
     }
     failure {
-      slackSend (color: 'danger', message: "FAILED: Job - ${env.JOB_NAME} ${env.BUILD_NUMBER} (<${env.BUILD_URL}|Open>) failed in ${currentBuild.durationString}")
+      slackSend (color: 'danger', message: "Build <${RUN_CHANGES_DISPLAY_URL[0..-8]}status|#$BUILD_NUMBER> of ${JOB_NAME} failed in ${currentBuild.durationString}")
     }
     aborted {
-      slackSend (color: 'warning', message: "ABORTED: Job - ${env.JOB_NAME} ${env.BUILD_NUMBER} (<${env.BUILD_URL}|Open>) canceled in ${currentBuild.durationString}")
+      slackSend (color: 'warning', message: "Build <${RUN_CHANGES_DISPLAY_URL[0..-8]}status|#$BUILD_NUMBER> of ${JOB_NAME} canceled in ${currentBuild.durationString}")
+    }
+    always {
+      node('delete-instance') {
+        container(name: 'gcloud', shell: '/bin/sh') {
+          withCredentials([file(credentialsId: 'e7e3e6df-8ef5-4738-a4d5-f56bb02a8bb2', variable: 'KEYFILE')]) {
+            checkout scm
+            sh 'apk update && apk add curl bash'
+            sh 'gcloud auth activate-service-account jenkins-pool@ehealth-162117.iam.gserviceaccount.com --key-file=${KEYFILE} --project=ehealth-162117'
+            sh 'curl -s https://raw.githubusercontent.com/edenlabllc/ci-utils/umbrella_jenkins_new/delete_instance.sh -o delete_instance.sh; bash ./delete_instance.sh'
+          }
+          slackSend (color: '#4286F5', message: "Stage for deleting instance for job <${RUN_CHANGES_DISPLAY_URL[0..-8]}status|#$BUILD_NUMBER> passed")
+        }
+      }
     }
   }
 }
