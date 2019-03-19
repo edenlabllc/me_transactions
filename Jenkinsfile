@@ -22,9 +22,9 @@ metadata:
     stage: build
 spec:
   tolerations:
-  - key: "node"
+  - key: " node-j"
     operator: "Equal"
-    value: "ci"
+    value: "ci-builds"
     effect: "NoSchedule"
   containers:
   - name: docker
@@ -43,7 +43,7 @@ spec:
         memory: "384Mi"
         cpu: "500m"
   nodeSelector:
-    node: ci
+    node-j: ci-builds
   volumes:
   - name: volume
     hostPath:
@@ -84,9 +84,9 @@ metadata:
     stage: build
 spec:
   tolerations:
-  - key: "node"
+  - key: " node-j"
     operator: "Equal"
-    value: "ci"
+    value: "ci-builds"
     effect: "NoSchedule"
   containers:
   - name: docker
@@ -110,7 +110,7 @@ spec:
     - cat
     tty: true
   nodeSelector:
-    node: ci
+    node-j: ci-builds
   volumes:
   - name: volume
     hostPath:
