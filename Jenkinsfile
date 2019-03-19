@@ -22,7 +22,7 @@ metadata:
     stage: build
 spec:
   tolerations:
-  - key: " node-j"
+  - key: "node-j"
     operator: "Equal"
     value: "ci-builds"
     effect: "NoSchedule"
@@ -90,7 +90,7 @@ metadata:
     stage: build
 spec:
   tolerations:
-  - key: " node-j"
+  - key: "node-j"
     operator: "Equal"
     value: "ci-builds"
     effect: "NoSchedule"
