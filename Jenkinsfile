@@ -22,32 +22,38 @@ metadata:
     stage: build
 spec:
   tolerations:
-  - key: "node"
+  - key: "node-j"
     operator: "Equal"
-    value: "ci"
+    value: "ci-builds"
     effect: "NoSchedule"
   containers:
   - name: docker
-    image: lakone/docker:18.09-alpine3.9
-    volumeMounts:
-    - mountPath: /var/run/docker.sock
-      name: volume
+    image: liubenokvlad/docker:18.09-alpine-elixir-1.8.1
+    env:
+    - name: POD_IP
+      valueFrom:
+        fieldRef:
+          fieldPath: status.podIP
+    - name: DOCKER_HOST 
+      value: tcp://localhost:2375 
     command:
     - cat
     tty: true
-    resources:
-      requests:
-        memory: "64Mi"
-        cpu: "250m"
-      limits:
-        memory: "384Mi"
-        cpu: "500m"
+  - name: dind
+    image: docker:18.09.2-dind
+    securityContext: 
+        privileged: true 
+    ports:
+    - containerPort: 2375
+    tty: true
+    volumeMounts: 
+    - name: docker-graph-storage 
+      mountPath: /var/lib/docker
   nodeSelector:
-    node: ci
-  volumes:
-  - name: volume
-    hostPath:
-      path: /var/run/docker.sock
+    node-j: ci-builds
+  volumes: 
+    - name: docker-graph-storage 
+      emptyDir: {}
 '''
         }
       }
@@ -84,37 +90,43 @@ metadata:
     stage: build
 spec:
   tolerations:
-  - key: "node"
+  - key: "node-j"
     operator: "Equal"
-    value: "ci"
+    value: "ci-builds"
     effect: "NoSchedule"
   containers:
   - name: docker
-    image: lakone/docker:18.09-alpine3.9
-    volumeMounts:
-    - mountPath: /var/run/docker.sock
-      name: volume
+    image: liubenokvlad/docker:18.09-alpine-elixir-1.8.1
+    env:
+    - name: POD_IP
+      valueFrom:
+        fieldRef:
+          fieldPath: status.podIP
+    - name: DOCKER_HOST 
+      value: tcp://localhost:2375 
     command:
     - cat
     tty: true
-    resources:
-      requests:
-        memory: "64Mi"
-        cpu: "250m"
-      limits:
-        memory: "384Mi"
-        cpu: "500m"
   - name: kubectl
     image: lachlanevenson/k8s-kubectl:v1.13.2
     command:
     - cat
     tty: true
+  - name: dind
+    image: docker:18.09.2-dind
+    securityContext: 
+        privileged: true 
+    ports:
+    - containerPort: 2375
+    tty: true
+    volumeMounts: 
+    - name: docker-graph-storage 
+      mountPath: /var/lib/docker
   nodeSelector:
-    node: ci
-  volumes:
-  - name: volume
-    hostPath:
-      path: /var/run/docker.sock
+    node-j: ci-builds
+  volumes: 
+    - name: docker-graph-storage 
+      emptyDir: {}
 '''
         }
       }
