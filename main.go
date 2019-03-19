@@ -99,7 +99,12 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 	case etf.Tuple:
 		if len(req) == 4 {
 			args := req[2].(string)
-			requestID := req[3].(string)
+			requestID := ""
+
+			if str, ok := req[3].(string); ok {
+				requestID = str
+			}
+
 			logger := log.With().Str("request_id", requestID).Logger()
 
 			var operations []Operation
