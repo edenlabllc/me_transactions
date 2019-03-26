@@ -47,9 +47,6 @@ pipeline {
           }
           withCredentials([file(credentialsId: '091bd05c-0219-4164-8a17-777f4caf7481', variable: 'GCLOUD_KEY')]) {
             sh '''
-              curl -LO https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl
-              chmod +x ./kubectl
-              sudo mv ./kubectl /usr/local/bin/kubectl
               gcloud auth activate-service-account --key-file=$GCLOUD_KEY
               gcloud container clusters get-credentials dev --zone europe-west1-d --project ehealth-162117
               kubectl delete pod -n me -l app=me-transactions
