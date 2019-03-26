@@ -19,10 +19,8 @@ pipeline {
       }
       post {
         always {
-          container(name: 'docker', shell: '/bin/sh') {
             sh 'echo " ---- step: Remove docker image from host ---- ";'
             sh 'sudo docker rmi edenlabllc/me_transactions:$GIT_COMMIT'
-          }
         }
       }
     }
