@@ -2,9 +2,8 @@ pipeline {
   agent {
     node { 
       label 'ehealth-build' 
-      }
+    }
   }
-}
   stages {
     stage('Build') {
       when {
@@ -53,13 +52,10 @@ pipeline {
             '''
           }
         }
-      }
       post {
         always {
-          container(name: 'docker', shell: '/bin/sh') {
-            sh 'echo " ---- step: Remove docker image from host ---- ";'
-            sh 'docker rmi edenlabllc/me_transactions:develop'
-          }
+          sh 'echo " ---- step: Remove docker image from host ---- ";'
+          sh 'sudo docker rmi edenlabllc/me_transactions:develop'
         }
       }
     }
