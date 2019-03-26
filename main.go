@@ -181,7 +181,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 					case "update_one":
 						filter, err := base64.StdEncoding.DecodeString(operation.Filter)
 						if err != nil {
-							logger.Warn().Msgf("Invalid base64 string on filter update: %s", operation.Set)
+							logger.Warn().Msgf("Invalid base64 string on filter update: %s", operation.Filter)
 							var buffer bytes.Buffer
 							buffer.WriteString("Invalid base64 string. ")
 							buffer.WriteString(err.Error())
@@ -213,6 +213,33 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 							return err
 						}
 						logger.Info().Msgf("Matched: %d, Modified: %d", a.MatchedCount, a.ModifiedCount)
+					case "delete_one":
+						filter, err := base64.StdEncoding.DecodeString(operation.Filter)
+						if err != nil {
+							logger.Warn().Msgf("Invalid base64 string on delete: %s", operation.Filter)
+							var buffer bytes.Buffer
+							buffer.WriteString("Invalid base64 string. ")
+							buffer.WriteString(err.Error())
+							replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
+							return err
+						}
+
+						var f interface{}
+						bson.Unmarshal(filter, &f)
+						a, err := collection.DeleteOne(sctx, filter)
+						if err != nil {
+							logger.Warn().Msgf("Aborting transaction: %s", err.Error())
+							logger.Warn().Msgf("Failed args: %s", args)
+							session.AbortTransaction(sctx)
+							var buffer bytes.Buffer
+							buffer.WriteString("Aborting transaction. ")
+							buffer.WriteString(err.Error())
+							replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
+							return err
+						}
+						logger.Info().Msgf("Deleted: %d", a.DeletedCount)
+					default:
+						logger.Info().Msgf("Invalid operation")
 					}
 				}
 
