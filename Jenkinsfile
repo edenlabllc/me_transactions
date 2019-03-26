@@ -1,5 +1,10 @@
 pipeline {
-  agent none
+  agent {
+    node { 
+      label 'ehealth-build' 
+      }
+  }
+}
   stages {
     stage('Build') {
       when {
@@ -10,63 +15,14 @@ pipeline {
       environment {
         APP_NAME = 'me_transactions'
       }
-      agent {
-        kubernetes {
-          label 'me-trans-build'
-          defaultContainer 'jnlp'
-          yaml '''
-apiVersion: v1
-kind: Pod
-metadata:
-  labels:
-    stage: build
-spec:
-  tolerations:
-  - key: "node-j"
-    operator: "Equal"
-    value: "ci-builds"
-    effect: "NoSchedule"
-  containers:
-  - name: docker
-    image: liubenokvlad/docker:18.09-alpine-elixir-1.8.1
-    env:
-    - name: POD_IP
-      valueFrom:
-        fieldRef:
-          fieldPath: status.podIP
-    - name: DOCKER_HOST 
-      value: tcp://localhost:2375 
-    command:
-    - cat
-    tty: true
-  - name: dind
-    image: docker:18.09.2-dind
-    securityContext: 
-        privileged: true 
-    ports:
-    - containerPort: 2375
-    tty: true
-    volumeMounts: 
-    - name: docker-graph-storage 
-      mountPath: /var/lib/docker
-  nodeSelector:
-    node-j: ci-builds
-  volumes: 
-    - name: docker-graph-storage 
-      emptyDir: {}
-'''
-        }
-      }
       steps {
-        container(name: 'docker', shell: '/bin/sh') {
-          sh 'docker build --tag "edenlabllc/me_transactions:$GIT_COMMIT" --build-arg APP_NAME=${APP_NAME} .'
-        }
+          sh 'sudo docker build --tag "edenlabllc/me_transactions:$GIT_COMMIT" --build-arg APP_NAME=${APP_NAME} .'
       }
       post {
         always {
           container(name: 'docker', shell: '/bin/sh') {
             sh 'echo " ---- step: Remove docker image from host ---- ";'
-            sh 'docker rmi edenlabllc/me_transactions:$GIT_COMMIT'
+            sh 'sudo docker rmi edenlabllc/me_transactions:$GIT_COMMIT'
           }
         }
       }
@@ -78,70 +34,24 @@ spec:
       environment {
         APP_NAME = 'me_transactions'
       }
-      agent {
-        kubernetes {
-          label 'me-trans-build'
-          defaultContainer 'jnlp'
-          yaml '''
-apiVersion: v1
-kind: Pod
-metadata:
-  labels:
-    stage: build
-spec:
-  tolerations:
-  - key: "node-j"
-    operator: "Equal"
-    value: "ci-builds"
-    effect: "NoSchedule"
-  containers:
-  - name: docker
-    image: liubenokvlad/docker:18.09-alpine-elixir-1.8.1
-    env:
-    - name: POD_IP
-      valueFrom:
-        fieldRef:
-          fieldPath: status.podIP
-    - name: DOCKER_HOST 
-      value: tcp://localhost:2375 
-    command:
-    - cat
-    tty: true
-  - name: kubectl
-    image: lachlanevenson/k8s-kubectl:v1.13.2
-    command:
-    - cat
-    tty: true
-  - name: dind
-    image: docker:18.09.2-dind
-    securityContext: 
-        privileged: true 
-    ports:
-    - containerPort: 2375
-    tty: true
-    volumeMounts: 
-    - name: docker-graph-storage 
-      mountPath: /var/lib/docker
-  nodeSelector:
-    node-j: ci-builds
-  volumes: 
-    - name: docker-graph-storage 
-      emptyDir: {}
-'''
-        }
-      }
       steps {
-        container(name: 'docker', shell: '/bin/sh') {
-          sh 'docker build --tag "edenlabllc/me_transactions:develop" --build-arg APP_NAME=${APP_NAME} .'
+          sh 'sudo docker build --tag "edenlabllc/me_transactions:develop" --build-arg APP_NAME=${APP_NAME} .'
           withCredentials(bindings: [usernamePassword(credentialsId: '8232c368-d5f5-4062-b1e0-20ec13b0d47b', usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
             sh 'echo " ---- step: Push docker image ---- ";'
             sh 'echo "Logging in into Docker Hub";'
             sh 'echo ${DOCKER_PASSWORD} | docker login -u ${DOCKER_USERNAME} --password-stdin'
-            sh 'docker push edenlabllc/me_transactions:develop'
+            sh 'sudo docker push edenlabllc/me_transactions:develop'
           }
-        }
-        container(name: 'kubectl', shell: '/bin/sh') {
-          sh 'kubectl delete pod -n me -l app=me-transactions'
+          withCredentials([file(credentialsId: '091bd05c-0219-4164-8a17-777f4caf7481', variable: 'GCLOUD_KEY')]) {
+            sh '''
+              curl -LO https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl
+              chmod +x ./kubectl
+              sudo mv ./kubectl /usr/local/bin/kubectl
+              gcloud auth activate-service-account --key-file=$GCLOUD_KEY
+              gcloud container clusters get-credentials dev --zone europe-west1-d --project ehealth-162117
+              kubectl delete pod -n me -l app=me-transactions
+            '''
+          }
         }
       }
       post {
