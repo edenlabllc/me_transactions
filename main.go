@@ -25,6 +25,11 @@ type goGenServ struct {
 	completeChan chan bool
 }
 
+type pg2Serv struct {
+	ergonode.GenServer
+	pg2CompleteChan chan bool
+}
+
 type State struct {
 	dbClient *mongo.Client
 	dbCtx    context.Context
@@ -46,6 +51,36 @@ var (
 	err      error
 	EpmdPort int
 )
+
+func (pg2 *pg2Serv) Init(args ...interface{}) (state interface{}) {
+	pg2.Node.Register(etf.Atom("pg2"), pg2.Self)
+	return nil
+}
+
+func (pg2 *pg2Serv) HandleCall(from *etf.Tuple, message *etf.Term, state interface{}) (code int, reply *etf.Term, stateout interface{}) {
+	stateout = state
+	code = 1
+	replyTerm := etf.Term(etf.Atom("ok"))
+	reply = &replyTerm
+	return
+}
+
+func (pg2 *pg2Serv) HandleCast(message *etf.Term, state interface{}) (code int, stateout interface{}) {
+	return
+}
+
+// HandleInfo serves all another incoming messages (Pid ! message)
+func (pg2 *pg2Serv) HandleInfo(message *etf.Term, state interface{}) (code int, stateout interface{}) {
+	fmt.Printf("HandleInfo: %#v\n", *message)
+	stateout = state
+	code = 0
+	return
+}
+
+// Terminate called when process died
+func (pg2 *pg2Serv) Terminate(reason int, state interface{}) {
+	fmt.Printf("Terminate: %#v\n", reason)
+}
 
 // Init initializes process state using arbitrary arguments
 func (gs *goGenServ) Init(args ...interface{}) (state interface{}) {
@@ -328,6 +363,13 @@ func main() {
 	// Initialize new node with given name and cookie
 	n := ergonode.Create(NodeName, uint16(EpmdPort), Cookie)
 	log.Info().Msg("Started erlang node")
+
+	pg2CompleteChan := make(chan bool)
+
+	pg2 := new(pg2Serv)
+	// Spawn process with one arguments
+	n.Spawn(pg2, pg2CompleteChan)
+	log.Info().Msg("Spawned pg2 gen server process")
 
 	// Create channel to receive message when main process should be stopped
 	completeChan := make(chan bool)
