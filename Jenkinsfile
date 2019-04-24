@@ -7,7 +7,30 @@ pipeline {
       label 'ehealth-build' 
     }
   }
+  environment {
+    REPOSITORY_NAME = 'me_transactions'
+}  
   stages {
+    stage('Check commit and PR requirements') {
+      options {
+        timeout(activity: true, time: 3)
+      }
+      steps {
+        sh '''
+          sudo rm /var/lib/dpkg/lock-frontend    
+          sudo rm /var/cache/apt/archives/lock
+          sudo rm /var/lib/dpkg/lock      
+          sudo dpkg --configure -a    
+          sudo apt-get update;      
+          sudo apt-get install -y ruby-dev;
+          sudo gem install json;
+          env;
+          curl -s https://raw.githubusercontent.com/edenlabllc/ci-utils/umbrella_jenkins_gce/check-PR.sh -o check-PR.sh;
+          chmod +x ./check-PR.sh;
+          ./check-PR.sh
+          '''
+      }
+}     
     stage('Build') {
       when {
         not {
