@@ -43,13 +43,14 @@ type Operation struct {
 }
 
 var (
-	mongoURL string
-	SrvName  string
-	NodeName string
-	Cookie   string
-	LogLevel string
-	err      error
-	EpmdPort int
+	mongoURL               string
+	SrvName                string
+	AuditLogCollectionName string
+	NodeName               string
+	Cookie                 string
+	LogLevel               string
+	err                    error
+	EpmdPort               int
 )
 
 func (pg2 *pg2Serv) Init(args ...interface{}) (state interface{}) {
@@ -182,6 +183,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 				// Start a transaction in a session
 				sctx.StartTransaction()
 				logger.Debug().Msgf("Started transaction")
+				auditLogCollection := database.Collection(AuditLogCollectionName)
 
 				for _, operation := range operations {
 					collection := database.Collection(operation.Collection)
@@ -199,8 +201,9 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 							return err
 						}
 
-						var f interface{}
+						var f map[string]interface{}
 						bson.Unmarshal(data, &f)
+						saveInsertAuditLog(sctx, auditLogCollection, collection, f, logger)
 						a, err := collection.InsertOne(sctx, data)
 						if err != nil {
 							logger.Warn().Msgf("Aborting transaction: %s", err.Error())
@@ -233,9 +236,11 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 							return err
 						}
 
-						var f interface{}
+						var f map[string]interface{}
 						bson.Unmarshal(filter, &f)
-						bson.Unmarshal(set, &f)
+						var s map[string]interface{}
+						bson.Unmarshal(set, &s)
+						saveUpdateAuditLog(sctx, auditLogCollection, collection, f, s, logger)
 						a, err := collection.UpdateOne(sctx, filter, set)
 						if err != nil {
 							logger.Warn().Msgf("Aborting transaction. %s", err.Error())
@@ -259,8 +264,9 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 							return err
 						}
 
-						var f interface{}
+						var f map[string]interface{}
 						bson.Unmarshal(filter, &f)
+						saveDeleteAuditLog(sctx, auditLogCollection, collection, f, logger)
 						a, err := collection.DeleteOne(sctx, filter)
 						if err != nil {
 							logger.Warn().Msgf("Aborting transaction: %s", err.Error())
@@ -304,6 +310,84 @@ func (gs *goGenServ) Terminate(reason int, state interface{}) {
 	fmt.Printf("Terminate: %#v\n", reason)
 }
 
+func saveInsertAuditLog(sctx mongo.SessionContext, auditLogCollection *mongo.Collection, collection *mongo.Collection, set map[string]interface{}, logger zerolog.Logger) {
+	var authorID string
+	var value interface{}
+	var ok bool
+	value, ok = set["inserted_by"]
+	if ok {
+		authorID = value.(string)
+	}
+
+	var entryID string
+	value, ok = set["_id"]
+	if ok {
+		entryID = value.(string)
+	}
+
+	_, err := auditLogCollection.InsertOne(sctx, bson.D{
+		{"entry_id", entryID},
+		{"collection", collection.Name},
+		{"author_id", authorID},
+		{"params", set},
+		{"type", "INSERT"},
+	})
+	if err != nil {
+		logger.Warn().Msgf("Failed to insert audit log")
+	}
+}
+
+func saveUpdateAuditLog(sctx mongo.SessionContext, auditLogCollection *mongo.Collection, collection *mongo.Collection, filter map[string]interface{}, set map[string]interface{}, logger zerolog.Logger) {
+	var authorID string
+	var value interface{}
+	var ok bool
+	value, ok = set["updated_by"]
+	if ok {
+		authorID = value.(string)
+	}
+
+	var entryID string
+	value, ok = filter["_id"]
+	if ok {
+		entryID = value.(string)
+	}
+
+	_, err := auditLogCollection.InsertOne(sctx, bson.D{
+		{"entry_id", entryID},
+		{"collection", collection.Name},
+		{"author_id", authorID},
+		{"params", set},
+		{"filter", filter},
+		{"type", "UPDATE"},
+	})
+	if err != nil {
+		logger.Warn().Msgf("Failed to insert audit log")
+	}
+}
+
+func saveDeleteAuditLog(sctx mongo.SessionContext, auditLogCollection *mongo.Collection, collection *mongo.Collection, filter map[string]interface{}, logger zerolog.Logger) {
+	var authorID string
+	var value interface{}
+	var ok bool
+
+	var entryID string
+	value, ok = filter["_id"]
+	if ok {
+		entryID = value.(string)
+	}
+
+	_, err := auditLogCollection.InsertOne(sctx, bson.D{
+		{"entry_id", entryID},
+		{"collection", collection.Name},
+		{"author_id", authorID},
+		{"filter", filter},
+		{"type", "DELETE"},
+	})
+	if err != nil {
+		logger.Warn().Msgf("Failed to insert audit log")
+	}
+}
+
 func init() {
 	mongoURL = os.Getenv("MONGO_URL")
 	if mongoURL == "" {
@@ -318,6 +402,11 @@ func init() {
 	NodeName = os.Getenv("NODE_NAME")
 	if NodeName == "" {
 		flag.StringVar(&NodeName, "name", "examplenode@127.0.0.1", "node name")
+	}
+
+	AuditLogCollectionName = os.Getenv("AUDIT_LOG_COLLECTION")
+	if AuditLogCollectionName == "" {
+		flag.StringVar(&AuditLogCollectionName, "audit_log_collection", "audit_log", "audit log collection name")
 	}
 
 	Cookie = os.Getenv("ERLANG_COOKIE")
