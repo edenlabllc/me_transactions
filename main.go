@@ -323,7 +323,7 @@ func saveInsertAuditLog(sctx mongo.SessionContext, auditLogCollection *mongo.Col
 
 	_, err := auditLogCollection.InsertOne(sctx, bson.D{
 		{"entry_id", entryID},
-		{"collection", collection.Name},
+		{"collection", collection.Name()},
 		{"author_id", authorID},
 		{"params", set},
 		{"type", "INSERT"},
@@ -346,7 +346,7 @@ func saveUpdateAuditLog(sctx mongo.SessionContext, auditLogCollection *mongo.Col
 
 	_, err := auditLogCollection.InsertOne(sctx, bson.D{
 		{"entry_id", entryID},
-		{"collection", collection.Name},
+		{"collection", collection.Name()},
 		{"author_id", authorID},
 		{"params", set},
 		{"filter", filter},
@@ -364,7 +364,7 @@ func saveDeleteAuditLog(sctx mongo.SessionContext, auditLogCollection *mongo.Col
 
 	_, err := auditLogCollection.InsertOne(sctx, bson.D{
 		{"entry_id", entryID},
-		{"collection", collection.Name},
+		{"collection", collection.Name()},
 		{"author_id", authorID},
 		{"filter", filter},
 		{"type", "DELETE"},
