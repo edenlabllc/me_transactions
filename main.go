@@ -329,7 +329,7 @@ func saveInsertAuditLog(sctx mongo.SessionContext, auditLogCollection *mongo.Col
 		{"type", "INSERT"},
 	})
 	if err != nil {
-		logger.Warn().Msgf("Failed to insert audit log")
+		logger.Warn().Msgf("Failed to insert audit log %s", err.Error())
 	}
 }
 
@@ -353,7 +353,7 @@ func saveUpdateAuditLog(sctx mongo.SessionContext, auditLogCollection *mongo.Col
 		{"type", "UPDATE"},
 	})
 	if err != nil {
-		logger.Warn().Msgf("Failed to insert audit log")
+		logger.Warn().Msgf("Failed to insert audit log %s", err.Error())
 	}
 }
 
@@ -370,7 +370,7 @@ func saveDeleteAuditLog(sctx mongo.SessionContext, auditLogCollection *mongo.Col
 		{"type", "DELETE"},
 	})
 	if err != nil {
-		logger.Warn().Msgf("Failed to insert audit log")
+		logger.Warn().Msgf("Failed to insert audit log %s", err.Error())
 	}
 }
 
