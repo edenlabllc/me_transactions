@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/halturin/ergonode"
 	"github.com/halturin/ergonode/etf"
@@ -327,7 +328,7 @@ func saveInsertAuditLog(sctx mongo.SessionContext, auditLogCollection *mongo.Col
 		{"author_id", authorID},
 		{"params", set},
 		{"type", "INSERT"},
-		{"inserted_at", time.Now()}
+		{"inserted_at", time.Now()},
 	})
 	if err != nil {
 		logger.Warn().Msgf("Failed to insert audit log %s", err.Error())
@@ -352,7 +353,7 @@ func saveUpdateAuditLog(sctx mongo.SessionContext, auditLogCollection *mongo.Col
 		{"params", set},
 		{"filter", filter},
 		{"type", "UPDATE"},
-		{"inserted_at", time.Now()}
+		{"inserted_at", time.Now()},
 	})
 	if err != nil {
 		logger.Warn().Msgf("Failed to insert audit log %s", err.Error())
@@ -370,7 +371,7 @@ func saveDeleteAuditLog(sctx mongo.SessionContext, auditLogCollection *mongo.Col
 		{"author_id", authorID},
 		{"filter", filter},
 		{"type", "DELETE"},
-		{"inserted_at", time.Now()}
+		{"inserted_at", time.Now()},
 	})
 	if err != nil {
 		logger.Warn().Msgf("Failed to insert audit log %s", err.Error())
