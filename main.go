@@ -312,14 +312,7 @@ func (gs *goGenServ) Terminate(reason int, state interface{}) {
 }
 
 func saveInsertAuditLog(sctx mongo.SessionContext, auditLogCollection *mongo.Collection, collection *mongo.Collection, set map[string]interface{}, logger zerolog.Logger) {
-	var authorID string
-	var value interface{}
-	var ok bool
-	value, ok = set["inserted_by"]
-	if ok {
-		authorID = value.(string)
-	}
-
+	authorID, _ := set["inserted_by"]
 	entryID, _ := set["_id"]
 
 	_, err := auditLogCollection.InsertOne(sctx, bson.D{
@@ -336,14 +329,7 @@ func saveInsertAuditLog(sctx mongo.SessionContext, auditLogCollection *mongo.Col
 }
 
 func saveUpdateAuditLog(sctx mongo.SessionContext, auditLogCollection *mongo.Collection, collection *mongo.Collection, filter map[string]interface{}, set map[string]interface{}, logger zerolog.Logger) {
-	var authorID string
-	var value interface{}
-	var ok bool
-	value, ok = set["updated_by"]
-	if ok {
-		authorID = value.(string)
-	}
-
+	authorID, _ := set["updated_by"]
 	entryID, _ := filter["_id"]
 
 	_, err := auditLogCollection.InsertOne(sctx, bson.D{
@@ -362,7 +348,6 @@ func saveUpdateAuditLog(sctx mongo.SessionContext, auditLogCollection *mongo.Col
 
 func saveDeleteAuditLog(sctx mongo.SessionContext, auditLogCollection *mongo.Collection, collection *mongo.Collection, filter map[string]interface{}, logger zerolog.Logger) {
 	var authorID string
-
 	entryID, _ := filter["_id"]
 
 	_, err := auditLogCollection.InsertOne(sctx, bson.D{
