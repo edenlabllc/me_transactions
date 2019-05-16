@@ -319,7 +319,6 @@ func saveInsertAuditLog(
 	bson.Unmarshal(set, &s)
 
 	_, err := auditLogCollection.InsertOne(sctx, bson.D{
-		{"entry_id", operation.Id},
 		{"collection", operation.Collection},
 		{"actor_id", actorID},
 		{"params", s},
@@ -344,7 +343,6 @@ func saveUpdateAuditLog(
 	var f interface{}
 	bson.Unmarshal(filter, &f)
 	_, err := auditLogCollection.InsertOne(sctx, bson.D{
-		{"entry_id", operation.Id},
 		{"collection", operation.Collection},
 		{"actor_id", actorID},
 		{"params", s},
@@ -367,7 +365,6 @@ func saveDeleteAuditLog(
 	var f interface{}
 	bson.Unmarshal(filter, &f)
 	_, err := auditLogCollection.InsertOne(sctx, bson.D{
-		{"entry_id", operation.Id},
 		{"collection", operation.Collection},
 		{"actor_id", actorID},
 		{"filter", f},
@@ -464,9 +461,3 @@ func main() {
 
 	return
 }
-
-// session = db.getMongo().startSession( { readPreference: { mode: "primary" } } );
-// employeesCollection = session.getDatabase("test").employees;
-// session.startTransaction( { readConcern: { level: "snapshot" }, writeConcern: { w: "majority" } } );
-// employeesCollection.insertOne( { name: "test" }  );
-// session.commitTransaction();
