@@ -315,11 +315,14 @@ func saveInsertAuditLog(
 	set []byte,
 	actorID string,
 	logger zerolog.Logger) {
+	var s interface{}
+	bson.Unmarshal(set, &s)
+
 	_, err := auditLogCollection.InsertOne(sctx, bson.D{
 		{"entry_id", operation.Id},
 		{"collection", operation.Collection},
 		{"actor_id", actorID},
-		{"params", set},
+		{"params", s},
 		{"type", "INSERT"},
 		{"inserted_at", time.Now()},
 	})
@@ -336,12 +339,16 @@ func saveUpdateAuditLog(
 	set []byte,
 	actorID string,
 	logger zerolog.Logger) {
+	var s interface{}
+	bson.Unmarshal(set, &s)
+	var f interface{}
+	bson.Unmarshal(filter, &f)
 	_, err := auditLogCollection.InsertOne(sctx, bson.D{
 		{"entry_id", operation.Id},
 		{"collection", operation.Collection},
 		{"actor_id", actorID},
-		{"params", set},
-		{"filter", filter},
+		{"params", s},
+		{"filter", f},
 		{"type", "UPDATE"},
 		{"inserted_at", time.Now()},
 	})
@@ -357,11 +364,13 @@ func saveDeleteAuditLog(
 	filter []byte,
 	actorID string,
 	logger zerolog.Logger) {
+	var f interface{}
+	bson.Unmarshal(filter, &f)
 	_, err := auditLogCollection.InsertOne(sctx, bson.D{
 		{"entry_id", operation.Id},
 		{"collection", operation.Collection},
 		{"actor_id", actorID},
-		{"filter", filter},
+		{"filter", f},
 		{"type", "DELETE"},
 		{"inserted_at", time.Now()},
 	})
