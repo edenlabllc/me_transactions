@@ -41,6 +41,11 @@ type Operation struct {
 	Collection string `json:"collection"`
 	Filter     string `json:"filter"`
 	Set        string `json:"set"`
+	Id         string `json:"id"`
+}
+type Request struct {
+	ActorID    string      `json:"actor_id"`
+	Operations []Operation `json:"operations"`
 }
 
 var (
@@ -144,12 +149,12 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 
 			logger := log.With().Str("request_id", requestID).Logger()
 
-			var operations []Operation
-			json.Unmarshal([]byte(args), &operations)
+			var request Request
+			json.Unmarshal([]byte(args), &request)
 
 			var logMessage bytes.Buffer
 			logMessage.WriteString("Received message. Operations: [")
-			for i, operation := range operations {
+			for i, operation := range request.Operations {
 				if i != 0 {
 					logMessage.WriteString(", ")
 				}
@@ -163,7 +168,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 			logMessage.WriteString("]")
 			logger.Warn().Msg(logMessage.String())
 
-			if len(operations) == 0 {
+			if len(request.Operations) == 0 {
 				replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), "No valid operations"})
 				return
 			}
@@ -186,7 +191,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 				logger.Debug().Msgf("Started transaction")
 				auditLogCollection := database.Collection(AuditLogCollectionName)
 
-				for _, operation := range operations {
+				for _, operation := range request.Operations {
 					collection := database.Collection(operation.Collection)
 					logger.Info().Msgf("Processing %s in %s collection", operation.Operation, operation.Collection)
 
@@ -202,9 +207,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 							return err
 						}
 
-						var f map[string]interface{}
-						bson.Unmarshal(data, &f)
-						saveInsertAuditLog(sctx, auditLogCollection, collection, f, logger)
+						saveInsertAuditLog(sctx, auditLogCollection, operation, data, request.ActorID, logger)
 						a, err := collection.InsertOne(sctx, data)
 						if err != nil {
 							logger.Warn().Msgf("Aborting transaction: %s", err.Error())
@@ -237,11 +240,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 							return err
 						}
 
-						var f map[string]interface{}
-						bson.Unmarshal(filter, &f)
-						var s map[string]interface{}
-						bson.Unmarshal(set, &s)
-						saveUpdateAuditLog(sctx, auditLogCollection, collection, f, s, logger)
+						saveUpdateAuditLog(sctx, auditLogCollection, operation, filter, set, request.ActorID, logger)
 						a, err := collection.UpdateOne(sctx, filter, set)
 						if err != nil {
 							logger.Warn().Msgf("Aborting transaction. %s", err.Error())
@@ -265,9 +264,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 							return err
 						}
 
-						var f map[string]interface{}
-						bson.Unmarshal(filter, &f)
-						saveDeleteAuditLog(sctx, auditLogCollection, collection, f, logger)
+						saveDeleteAuditLog(sctx, auditLogCollection, operation, filter, request.ActorID, logger)
 						a, err := collection.DeleteOne(sctx, filter)
 						if err != nil {
 							logger.Warn().Msgf("Aborting transaction: %s", err.Error())
@@ -311,14 +308,17 @@ func (gs *goGenServ) Terminate(reason int, state interface{}) {
 	fmt.Printf("Terminate: %#v\n", reason)
 }
 
-func saveInsertAuditLog(sctx mongo.SessionContext, auditLogCollection *mongo.Collection, collection *mongo.Collection, set map[string]interface{}, logger zerolog.Logger) {
-	authorID, _ := set["inserted_by"]
-	entryID, _ := set["_id"]
-
+func saveInsertAuditLog(
+	sctx mongo.SessionContext,
+	auditLogCollection *mongo.Collection,
+	operation Operation,
+	set []byte,
+	actorID string,
+	logger zerolog.Logger) {
 	_, err := auditLogCollection.InsertOne(sctx, bson.D{
-		{"entry_id", entryID},
-		{"collection", collection.Name()},
-		{"author_id", authorID},
+		{"entry_id", operation.Id},
+		{"collection", operation.Collection},
+		{"actor_id", actorID},
 		{"params", set},
 		{"type", "INSERT"},
 		{"inserted_at", time.Now()},
@@ -328,14 +328,18 @@ func saveInsertAuditLog(sctx mongo.SessionContext, auditLogCollection *mongo.Col
 	}
 }
 
-func saveUpdateAuditLog(sctx mongo.SessionContext, auditLogCollection *mongo.Collection, collection *mongo.Collection, filter map[string]interface{}, set map[string]interface{}, logger zerolog.Logger) {
-	authorID, _ := set["updated_by"]
-	entryID, _ := filter["_id"]
-
+func saveUpdateAuditLog(
+	sctx mongo.SessionContext,
+	auditLogCollection *mongo.Collection,
+	operation Operation,
+	filter []byte,
+	set []byte,
+	actorID string,
+	logger zerolog.Logger) {
 	_, err := auditLogCollection.InsertOne(sctx, bson.D{
-		{"entry_id", entryID},
-		{"collection", collection.Name()},
-		{"author_id", authorID},
+		{"entry_id", operation.Id},
+		{"collection", operation.Collection},
+		{"actor_id", actorID},
 		{"params", set},
 		{"filter", filter},
 		{"type", "UPDATE"},
@@ -346,14 +350,17 @@ func saveUpdateAuditLog(sctx mongo.SessionContext, auditLogCollection *mongo.Col
 	}
 }
 
-func saveDeleteAuditLog(sctx mongo.SessionContext, auditLogCollection *mongo.Collection, collection *mongo.Collection, filter map[string]interface{}, logger zerolog.Logger) {
-	var authorID string
-	entryID, _ := filter["_id"]
-
+func saveDeleteAuditLog(
+	sctx mongo.SessionContext,
+	auditLogCollection *mongo.Collection,
+	operation Operation,
+	filter []byte,
+	actorID string,
+	logger zerolog.Logger) {
 	_, err := auditLogCollection.InsertOne(sctx, bson.D{
-		{"entry_id", entryID},
-		{"collection", collection.Name()},
-		{"author_id", authorID},
+		{"entry_id", operation.Id},
+		{"collection", operation.Collection},
+		{"actor_id", actorID},
 		{"filter", filter},
 		{"type", "DELETE"},
 		{"inserted_at", time.Now()},
