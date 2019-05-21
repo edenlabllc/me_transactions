@@ -13,8 +13,10 @@ import (
 
 	"github.com/halturin/ergonode"
 	"github.com/halturin/ergonode/etf"
-	"github.com/mongodb/mongo-go-driver/bson"
-	"github.com/mongodb/mongo-go-driver/mongo"
+
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -93,7 +95,7 @@ func (pg2 *pg2Serv) Terminate(reason int, state interface{}) {
 // Init initializes process state using arbitrary arguments
 func (gs *goGenServ) Init(args ...interface{}) (state interface{}) {
 	// Initialize new instance of goGenServ structure which implements Process behaviour
-	var client, err = mongo.NewClient(mongoURL)
+	var client, err = mongo.NewClient(options.Client().ApplyURI(mongoURL))
 	if err != nil {
 		var buffer bytes.Buffer
 		buffer.WriteString("Failed to connect to mongo: ")
