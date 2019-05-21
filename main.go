@@ -52,6 +52,7 @@ var (
 	mongoURL               string
 	SrvName                string
 	AuditLogCollectionName string
+	AuditLogEnabled        string
 	NodeName               string
 	Cookie                 string
 	LogLevel               string
@@ -209,9 +210,11 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 							return err
 						}
 
-						saveInsertAuditLog(sctx, auditLogCollection, operation, data, request.ActorID, logger)
 						var d interface{}
 						bson.Unmarshal(data, &d)
+						if AuditLogEnabled == "true" {
+							saveInsertAuditLog(sctx, auditLogCollection, operation, d, request.ActorID, logger)
+						}
 						a, err := collection.InsertOne(sctx, d)
 						if err != nil {
 							logger.Warn().Msgf("Aborting transaction: %s", err.Error())
@@ -244,12 +247,14 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 							return err
 						}
 
-						saveUpdateAuditLog(sctx, auditLogCollection, operation, filter, set, request.ActorID, logger)
 						var f interface{}
 						bson.Unmarshal(filter, &f)
 						var s interface{}
 						bson.Unmarshal(set, &s)
-						a, err := collection.UpdateOne(sctx, filter, set)
+						if AuditLogEnabled == "true" {
+							saveUpdateAuditLog(sctx, auditLogCollection, operation, f, s, request.ActorID, logger)
+						}
+						a, err := collection.UpdateOne(sctx, f, s)
 						if err != nil {
 							logger.Warn().Msgf("Aborting transaction. %s", err.Error())
 							logger.Warn().Msgf("Failed args: %s", args)
@@ -272,9 +277,11 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 							return err
 						}
 
-						saveDeleteAuditLog(sctx, auditLogCollection, operation, filter, request.ActorID, logger)
 						var f interface{}
 						bson.Unmarshal(filter, &f)
+						if AuditLogEnabled == "true" {
+							saveDeleteAuditLog(sctx, auditLogCollection, operation, f, request.ActorID, logger)
+						}
 						a, err := collection.DeleteOne(sctx, f)
 						if err != nil {
 							logger.Warn().Msgf("Aborting transaction: %s", err.Error())
@@ -322,16 +329,14 @@ func saveInsertAuditLog(
 	sctx mongo.SessionContext,
 	auditLogCollection *mongo.Collection,
 	operation Operation,
-	set []byte,
+	set interface{},
 	actorID string,
 	logger zerolog.Logger) {
-	var s interface{}
-	bson.Unmarshal(set, &s)
 
 	_, err := auditLogCollection.InsertOne(sctx, bson.D{
 		{"collection", operation.Collection},
 		{"actor_id", actorID},
-		{"params", s},
+		{"params", set},
 		{"type", "INSERT"},
 		{"inserted_at", time.Now()},
 	})
@@ -344,19 +349,15 @@ func saveUpdateAuditLog(
 	sctx mongo.SessionContext,
 	auditLogCollection *mongo.Collection,
 	operation Operation,
-	filter []byte,
-	set []byte,
+	filter interface{},
+	set interface{},
 	actorID string,
 	logger zerolog.Logger) {
-	var s interface{}
-	bson.Unmarshal(set, &s)
-	var f interface{}
-	bson.Unmarshal(filter, &f)
 	_, err := auditLogCollection.InsertOne(sctx, bson.D{
 		{"collection", operation.Collection},
 		{"actor_id", actorID},
-		{"params", s},
-		{"filter", f},
+		{"params", set},
+		{"filter", filter},
 		{"type", "UPDATE"},
 		{"inserted_at", time.Now()},
 	})
@@ -369,15 +370,13 @@ func saveDeleteAuditLog(
 	sctx mongo.SessionContext,
 	auditLogCollection *mongo.Collection,
 	operation Operation,
-	filter []byte,
+	filter interface{},
 	actorID string,
 	logger zerolog.Logger) {
-	var f interface{}
-	bson.Unmarshal(filter, &f)
 	_, err := auditLogCollection.InsertOne(sctx, bson.D{
 		{"collection", operation.Collection},
 		{"actor_id", actorID},
-		{"filter", f},
+		{"filter", filter},
 		{"type", "DELETE"},
 		{"inserted_at", time.Now()},
 	})
@@ -405,6 +404,11 @@ func init() {
 	AuditLogCollectionName = os.Getenv("AUDIT_LOG_COLLECTION")
 	if AuditLogCollectionName == "" {
 		flag.StringVar(&AuditLogCollectionName, "audit_log_collection", "audit_log", "audit log collection name")
+	}
+
+	AuditLogEnabled = os.Getenv("AUDIT_LOG_ENABLED")
+	if AuditLogEnabled == "" {
+		flag.StringVar(&AuditLogEnabled, "audit_log_enabled", "true", "audit log enabled")
 	}
 
 	Cookie = os.Getenv("ERLANG_COOKIE")
