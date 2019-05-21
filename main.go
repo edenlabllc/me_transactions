@@ -208,7 +208,9 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 						}
 
 						saveInsertAuditLog(sctx, auditLogCollection, operation, data, request.ActorID, logger)
-						a, err := collection.InsertOne(sctx, data)
+						var d interface{}
+						bson.Unmarshal(data, &d)
+						a, err := collection.InsertOne(sctx, d)
 						if err != nil {
 							logger.Warn().Msgf("Aborting transaction: %s", err.Error())
 							logger.Warn().Msgf("Failed args: %s", args)
@@ -241,6 +243,10 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 						}
 
 						saveUpdateAuditLog(sctx, auditLogCollection, operation, filter, set, request.ActorID, logger)
+						var f interface{}
+						bson.Unmarshal(filter, &f)
+						var s interface{}
+						bson.Unmarshal(set, &s)
 						a, err := collection.UpdateOne(sctx, filter, set)
 						if err != nil {
 							logger.Warn().Msgf("Aborting transaction. %s", err.Error())
@@ -265,7 +271,9 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 						}
 
 						saveDeleteAuditLog(sctx, auditLogCollection, operation, filter, request.ActorID, logger)
-						a, err := collection.DeleteOne(sctx, filter)
+						var f interface{}
+						bson.Unmarshal(filter, &f)
+						a, err := collection.DeleteOne(sctx, f)
 						if err != nil {
 							logger.Warn().Msgf("Aborting transaction: %s", err.Error())
 							logger.Warn().Msgf("Failed args: %s", args)
