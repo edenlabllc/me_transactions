@@ -166,6 +166,8 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 					logMessage.WriteString(fmt.Sprintf("{collection: %s, operation: %s}", operation.Collection, operation.Operation))
 				case "update_one":
 					logMessage.WriteString(fmt.Sprintf("{collection: %s, operation: %s, filter: %s}", operation.Collection, operation.Operation, operation.Filter))
+				case "upsert_one":
+					logMessage.WriteString(fmt.Sprintf("{collection: %s, operation: %s, filter: %s}", operation.Collection, operation.Operation, operation.Filter))
 				case "delete_one":
 					logMessage.WriteString(fmt.Sprintf("{collection: %s, operation: %s, filter: %s}", operation.Collection, operation.Operation, operation.Filter))
 				}
@@ -214,9 +216,6 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 
 						var d interface{}
 						bson.Unmarshal(data, &d)
-						if AuditLogEnabled == "true" {
-							saveInsertAuditLog(sctx, auditLogCollection, operation, d, request.ActorID, logger)
-						}
 						a, err := collection.InsertOne(sctx, d)
 						if err != nil {
 							logger.Warn().Msgf("Aborting transaction: %s", err.Error())
@@ -227,6 +226,8 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 							buffer.WriteString(err.Error())
 							replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
 							return err
+						} else if AuditLogEnabled == "true" {
+							saveInsertAuditLog(sctx, auditLogCollection, operation, d, request.ActorID, logger)
 						}
 						logger.Info().Msgf("Inserted: %s", a)
 					case "update_one":
@@ -253,9 +254,6 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 						bson.Unmarshal(filter, &f)
 						var s interface{}
 						bson.Unmarshal(set, &s)
-						if AuditLogEnabled == "true" {
-							saveUpdateAuditLog(sctx, auditLogCollection, operation, f, s, request.ActorID, logger)
-						}
 						a, err := collection.UpdateOne(sctx, f, s)
 						if err != nil {
 							logger.Warn().Msgf("Aborting transaction. %s", err.Error())
@@ -266,6 +264,48 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 							buffer.WriteString(err.Error())
 							replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
 							return err
+						} else if AuditLogEnabled == "true" {
+							saveUpdateAuditLog(sctx, auditLogCollection, operation, f, s, request.ActorID, a, logger)
+						}
+						logger.Info().Msgf("Matched: %d, Modified: %d", a.MatchedCount, a.ModifiedCount)
+					case "upsert_one":
+						filter, err := base64.StdEncoding.DecodeString(operation.Filter)
+						if err != nil {
+							logger.Warn().Msgf("Invalid base64 string on filter upsert: %s", operation.Filter)
+							var buffer bytes.Buffer
+							buffer.WriteString("Invalid base64 string. ")
+							buffer.WriteString(err.Error())
+							replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
+							return err
+						}
+						set, err := base64.StdEncoding.DecodeString(operation.Set)
+						if err != nil {
+							logger.Warn().Msgf("Invalid base64 string on set upsert: %s", operation.Set)
+							var buffer bytes.Buffer
+							buffer.WriteString("Invalid base64 string. ")
+							buffer.WriteString(err.Error())
+							replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
+							return err
+						}
+
+						var f interface{}
+						bson.Unmarshal(filter, &f)
+						var s interface{}
+						bson.Unmarshal(set, &s)
+						var upsert = true
+						var upsertOptions = options.UpdateOptions{Upsert: &upsert}
+						a, err := collection.UpdateOne(sctx, f, s, &upsertOptions)
+						if err != nil {
+							logger.Warn().Msgf("Aborting transaction. %s", err.Error())
+							logger.Warn().Msgf("Failed args: %s", args)
+							session.AbortTransaction(sctx)
+							var buffer bytes.Buffer
+							buffer.WriteString("Aborting transaction. ")
+							buffer.WriteString(err.Error())
+							replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
+							return err
+						} else if AuditLogEnabled == "true" {
+							saveUpdateAuditLog(sctx, auditLogCollection, operation, f, s, request.ActorID, a, logger)
 						}
 						logger.Info().Msgf("Matched: %d, Modified: %d", a.MatchedCount, a.ModifiedCount)
 					case "delete_one":
@@ -281,9 +321,6 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 
 						var f interface{}
 						bson.Unmarshal(filter, &f)
-						if AuditLogEnabled == "true" {
-							saveDeleteAuditLog(sctx, auditLogCollection, operation, f, request.ActorID, logger)
-						}
 						a, err := collection.DeleteOne(sctx, f)
 						if err != nil {
 							logger.Warn().Msgf("Aborting transaction: %s", err.Error())
@@ -294,6 +331,8 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 							buffer.WriteString(err.Error())
 							replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
 							return err
+						} else if AuditLogEnabled == "true" {
+							saveDeleteAuditLog(sctx, auditLogCollection, operation, f, request.ActorID, logger)
 						}
 						logger.Info().Msgf("Deleted: %d", a.DeletedCount)
 					default:
@@ -354,17 +393,27 @@ func saveUpdateAuditLog(
 	filter interface{},
 	set interface{},
 	actorID string,
+	updateResult *mongo.UpdateResult,
 	logger zerolog.Logger) {
-	_, err := auditLogCollection.InsertOne(sctx, bson.D{
-		{"collection", operation.Collection},
-		{"actor_id", actorID},
-		{"params", set},
-		{"filter", filter},
-		{"type", "UPDATE"},
-		{"inserted_at", time.Now()},
-	})
-	if err != nil {
-		logger.Warn().Msgf("Failed to insert audit log %s", err.Error())
+	var operationType string
+	if updateResult.ModifiedCount > 0 {
+		operationType = "UPDATE"
+	} else if updateResult.UpsertedCount > 0 {
+		operationType = "INSERT"
+	}
+
+	if operationType != "" {
+		_, err := auditLogCollection.InsertOne(sctx, bson.D{
+			{"collection", operation.Collection},
+			{"actor_id", actorID},
+			{"params", set},
+			{"filter", filter},
+			{"type", operationType},
+			{"inserted_at", time.Now()},
+		})
+		if err != nil {
+			logger.Warn().Msgf("Failed to insert audit log %s", err.Error())
+		}
 	}
 }
 
