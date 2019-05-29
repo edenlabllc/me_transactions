@@ -53,6 +53,7 @@ type Request struct {
 var (
 	mongoURL               string
 	SrvName                string
+	DBPoolSize             uint16
 	AuditLogCollectionName string
 	AuditLogEnabled        string
 	NodeName               string
@@ -95,7 +96,7 @@ func (pg2 *pg2Serv) Terminate(reason int, state interface{}) {
 // Init initializes process state using arbitrary arguments
 func (gs *goGenServ) Init(args ...interface{}) (state interface{}) {
 	// Initialize new instance of goGenServ structure which implements Process behaviour
-	var client, err = mongo.NewClient(options.Client().ApplyURI(mongoURL))
+	var client, err = mongo.NewClient(options.Client().ApplyURI(mongoURL).SetMaxPoolSize(DBPoolSize))
 	if err != nil {
 		var buffer bytes.Buffer
 		buffer.WriteString("Failed to connect to mongo: ")
@@ -440,6 +441,19 @@ func init() {
 	mongoURL = os.Getenv("MONGO_URL")
 	if mongoURL == "" {
 		flag.StringVar(&mongoURL, "mongo_url", "mongodb://localhost:27017/medical_events?replicaSet=replicaTest", "mongo connect url")
+	}
+
+	dbPoolSize := os.Getenv("DB_POOL_SIZE")
+	if dbPoolSize != "" {
+		var base = 10
+		var size = 16
+		a, err := strconv.ParseUint(dbPoolSize, base, size)
+		if err != nil {
+			panic("Invalid pool size")
+		}
+		DBPoolSize = uint16(a)
+	} else {
+		DBPoolSize = 50
 	}
 
 	SrvName = os.Getenv("GEN_SERVER_NAME")
