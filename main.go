@@ -47,7 +47,7 @@ type Operation struct {
 }
 type Request struct {
 	ActorID    string      `json:"actor_id"`
-	PersonID   string      `json:"person_id"`
+	PatientID  string      `json:"patient_id"`
 	Operations []Operation `json:"operations"`
 }
 
@@ -229,7 +229,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 							replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
 							return err
 						} else if AuditLogEnabled == "true" {
-							saveInsertAuditLog(sctx, auditLogCollection, operation, d, request.ActorID, request.PersonID, logger)
+							saveInsertAuditLog(sctx, auditLogCollection, operation, d, request.ActorID, request.PatientID, logger)
 						}
 						logger.Info().Msgf("Inserted: %s", a)
 					case "update_one":
@@ -267,7 +267,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 							replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
 							return err
 						} else if AuditLogEnabled == "true" {
-							saveUpdateAuditLog(sctx, auditLogCollection, operation, f, s, request.ActorID, request.PersonID, a, logger)
+							saveUpdateAuditLog(sctx, auditLogCollection, operation, f, s, request.ActorID, request.PatientID, a, logger)
 						}
 						logger.Info().Msgf("Matched: %d, Modified: %d", a.MatchedCount, a.ModifiedCount)
 					case "upsert_one":
@@ -307,7 +307,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 							replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
 							return err
 						} else if AuditLogEnabled == "true" {
-							saveUpdateAuditLog(sctx, auditLogCollection, operation, f, s, request.ActorID, request.PersonID, a, logger)
+							saveUpdateAuditLog(sctx, auditLogCollection, operation, f, s, request.ActorID, request.PatientID, a, logger)
 						}
 						logger.Info().Msgf("Matched: %d, Modified: %d", a.MatchedCount, a.ModifiedCount)
 					case "delete_one":
@@ -374,13 +374,13 @@ func saveInsertAuditLog(
 	operation Operation,
 	set interface{},
 	actorID string,
-	personID string,
+	patientID string,
 	logger zerolog.Logger) {
 
 	_, err := auditLogCollection.InsertOne(sctx, bson.D{
 		{"collection", operation.Collection},
 		{"actor_id", actorID},
-		{"person_id", personID},
+		{"patient_id", patientID},
 		{"params", set},
 		{"type", "INSERT"},
 		{"inserted_at", time.Now()},
@@ -397,7 +397,7 @@ func saveUpdateAuditLog(
 	filter interface{},
 	set interface{},
 	actorID string,
-	personID string,
+	patientID string,
 	updateResult *mongo.UpdateResult,
 	logger zerolog.Logger) {
 	var operationType string
@@ -411,7 +411,7 @@ func saveUpdateAuditLog(
 		_, err := auditLogCollection.InsertOne(sctx, bson.D{
 			{"collection", operation.Collection},
 			{"actor_id", actorID},
-			{"person_id", personID},
+			{"patient_id", patientID},
 			{"params", set},
 			{"filter", filter},
 			{"type", operationType},
