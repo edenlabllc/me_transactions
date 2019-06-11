@@ -53,6 +53,7 @@ type Request struct {
 
 var (
 	mongoURL               string
+	healthCheckPath        string
 	SrvName                string
 	DBPoolSize             uint16
 	AuditLogCollectionName string
@@ -124,6 +125,16 @@ func (gs *goGenServ) Init(args ...interface{}) (state interface{}) {
 
 // HandleCast serves incoming messages sending via gen_server:cast
 func (gs *goGenServ) HandleCast(message *etf.Term, state interface{}) (code int, stateout interface{}) {
+	stateout = state
+	switch req := (*message).(type) {
+	case etf.Atom:
+		switch string(req) {
+		case "check":
+			f, _ := os.Create(healthCheckPath)
+			f.Close()
+			return
+		}
+	}
 	return
 }
 
@@ -446,6 +457,11 @@ func init() {
 	mongoURL = os.Getenv("MONGO_URL")
 	if mongoURL == "" {
 		flag.StringVar(&mongoURL, "mongo_url", "mongodb://localhost:27017/medical_events?replicaSet=replicaTest", "mongo connect url")
+	}
+
+	healthCheckPath = os.Getenv("HEALTH_CHECK_PATH")
+	if healthCheckPath == "" {
+		flag.StringVar(&healthCheckPath, "health_check", "/tmp/healthy", "health check path")
 	}
 
 	dbPoolSize := os.Getenv("DB_POOL_SIZE")
