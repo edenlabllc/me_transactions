@@ -125,12 +125,17 @@ func (gs *goGenServ) Init(args ...interface{}) (state interface{}) {
 
 // HandleCast serves incoming messages sending via gen_server:cast
 func (gs *goGenServ) HandleCast(message *etf.Term, state interface{}) (code int, stateout interface{}) {
+	logger := log.With().Logger()
 	stateout = state
 	switch req := (*message).(type) {
 	case etf.Atom:
 		switch string(req) {
 		case "check":
-			f, _ := os.Create(healthCheckPath)
+			logger.Info().Msgf("Received health check message")
+			f, err := os.Create(healthCheckPath)
+			if err != nil {
+				logger.Warn().Msgf("Can't create health check file")
+			}
 			f.Close()
 			return
 		}
