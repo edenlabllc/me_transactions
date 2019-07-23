@@ -526,10 +526,9 @@ func init() {
 func main() {
 	zerolog.LevelFieldName = "severity"
 	zerolog.MessageFieldName = "log"
-	zerolog.CallerFieldName = "sourceLocation"
 	zerolog.TimeFieldFormat = "2006-01-02T15:04:05.999Z"
 
-	log.Logger = log.With().Caller().Logger()
+	log.Logger = log.With().Logger()
 
 	switch LogLevel {
 	case "warn":
