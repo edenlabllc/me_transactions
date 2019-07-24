@@ -359,7 +359,10 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 				}
 
 				// Committing transaction
-				session.CommitTransaction(sctx)
+				err = session.CommitTransaction(sctx)
+				if err != nil {
+					replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), err.Error()})
+				}
 				return nil
 			})
 			session.EndSession(ctx)
