@@ -17,6 +17,8 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/mongo/readconcern"
+	"go.mongodb.org/mongo-driver/mongo/writeconcern"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -212,7 +214,15 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 
 			err = mongo.WithSession(ctx, session, func(sctx mongo.SessionContext) error {
 				// Start a transaction in a session
-				sctx.StartTransaction()
+				err := sctx.StartTransaction(options.Transaction().
+					SetReadConcern(readconcern.Snapshot()).
+					SetWriteConcern(writeconcern.New(writeconcern.WMajority())),
+				)
+				if err != nil {
+					logger.Error().Msgf("Failed to start transaction")
+					replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), err.Error()})
+					return err
+				}
 				logger.Debug().Msgf("Started transaction")
 				auditLogCollection := database.Collection(AuditLogCollectionName)
 
@@ -238,7 +248,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 						if err != nil {
 							logger.Warn().Msgf("Aborting transaction: %s", err.Error())
 							logger.Warn().Msgf("Failed args: %s", args)
-							session.AbortTransaction(sctx)
+							sctx.AbortTransaction(sctx)
 							var buffer bytes.Buffer
 							buffer.WriteString("Aborting transaction. ")
 							buffer.WriteString(err.Error())
@@ -276,7 +286,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 						if err != nil {
 							logger.Warn().Msgf("Aborting transaction. %s", err.Error())
 							logger.Warn().Msgf("Failed args: %s", args)
-							session.AbortTransaction(sctx)
+							sctx.AbortTransaction(sctx)
 							var buffer bytes.Buffer
 							buffer.WriteString("Aborting transaction. ")
 							buffer.WriteString(err.Error())
@@ -316,7 +326,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 						if err != nil {
 							logger.Warn().Msgf("Aborting transaction. %s", err.Error())
 							logger.Warn().Msgf("Failed args: %s", args)
-							session.AbortTransaction(sctx)
+							sctx.AbortTransaction(sctx)
 							var buffer bytes.Buffer
 							buffer.WriteString("Aborting transaction. ")
 							buffer.WriteString(err.Error())
@@ -325,7 +335,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 						} else if AuditLogEnabled == "true" {
 							saveUpdateAuditLog(sctx, auditLogCollection, operation, f, s, request.ActorID, request.PatientID, a, logger)
 						}
-						logger.Info().Msgf("Matched: %d, Modified: %d", a.MatchedCount, a.ModifiedCount)
+						logger.Info().Msgf("Matched: %d, Modified: %d, Upserted: %d", a.MatchedCount, a.ModifiedCount, a.UpsertedCount)
 					case "delete_one":
 						filter, err := base64.StdEncoding.DecodeString(operation.Filter)
 						if err != nil {
@@ -343,7 +353,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 						if err != nil {
 							logger.Warn().Msgf("Aborting transaction: %s", err.Error())
 							logger.Warn().Msgf("Failed args: %s", args)
-							session.AbortTransaction(sctx)
+							sctx.AbortTransaction(sctx)
 							var buffer bytes.Buffer
 							buffer.WriteString("Aborting transaction. ")
 							buffer.WriteString(err.Error())
@@ -359,11 +369,22 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 				}
 
 				// Committing transaction
-				err = session.CommitTransaction(sctx)
-				if err != nil {
-					replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), err.Error()})
+				for {
+					err = sctx.CommitTransaction(sctx)
+					switch e := err.(type) {
+					case nil:
+						return nil
+					case mongo.CommandError:
+						if e.HasErrorLabel("UnknownTransactionCommitResult") {
+							continue
+						}
+						replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), err.Error()})
+						return err
+					default:
+						replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), err.Error()})
+						return err
+					}
 				}
-				return nil
 			})
 			session.EndSession(ctx)
 			if err == nil {
