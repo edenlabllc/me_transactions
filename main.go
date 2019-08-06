@@ -58,6 +58,7 @@ var (
 	healthCheckPath        string
 	SrvName                string
 	DBPoolSize             uint16
+	DBWriteConcern         int
 	AuditLogCollectionName string
 	AuditLogEnabled        string
 	NodeName               string
@@ -211,12 +212,16 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 			logger.Debug().Msgf("Started session")
 
 			database := client.Database("medical_data")
+			concern := writeconcern.WMajority()
+			if DBWriteConcern != 0 {
+				concern = writeconcern.W(DBWriteConcern)
+			}
 
 			err = mongo.WithSession(ctx, session, func(sctx mongo.SessionContext) error {
 				// Start a transaction in a session
 				err := sctx.StartTransaction(options.Transaction().
 					SetReadConcern(readconcern.Snapshot()).
-					SetWriteConcern(writeconcern.New(writeconcern.WMajority())),
+					SetWriteConcern(writeconcern.New(concern)),
 				)
 				if err != nil {
 					logger.Error().Msgf("Failed to start transaction")
@@ -504,6 +509,17 @@ func init() {
 		DBPoolSize = uint16(a)
 	} else {
 		DBPoolSize = 50
+	}
+
+	writeConcern := os.Getenv("DB_WRITE_CONCERN")
+	if writeConcern != "" {
+		var base = 10
+		var size = 16
+		a, err := strconv.ParseUint(dbPoolSize, base, size)
+		if err != nil {
+			panic("Invalid write concern")
+		}
+		DBWriteConcern = int(a)
 	}
 
 	SrvName = os.Getenv("GEN_SERVER_NAME")
