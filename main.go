@@ -217,7 +217,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 				concern = writeconcern.W(DBWriteConcern)
 			}
 
-			err = mongo.WithSession(ctx, session, func(sctx mongo.SessionContext) error {
+			transactionFn := func(sctx mongo.SessionContext) error {
 				// Start a transaction in a session
 				err := sctx.StartTransaction(options.Transaction().
 					SetReadConcern(readconcern.Snapshot()).
@@ -390,7 +390,12 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 						return err
 					}
 				}
+			}
+
+			err = mongo.WithSession(ctx, session, func(sctx mongo.SessionContext) error {
+				return runTransactionWithRetry(sctx, transactionFn)
 			})
+
 			session.EndSession(ctx)
 			if err == nil {
 				replyTerm = etf.Term(etf.Atom("ok"))
@@ -398,6 +403,21 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 		}
 	}
 	return
+}
+
+func runTransactionWithRetry(sctx mongo.SessionContext, txnFn func(mongo.SessionContext) error) error {
+	for {
+		err := txnFn(sctx) // Performs transaction.
+		if err == nil {
+			return nil
+		}
+
+		// If transient error, retry the whole transaction
+		if cmdErr, ok := err.(mongo.CommandError); ok && cmdErr.HasErrorLabel("TransientTransactionError") {
+			continue
+		}
+		return err
+	}
 }
 
 // HandleInfo serves all another incoming messages (Pid ! message)
