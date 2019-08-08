@@ -150,258 +150,273 @@ func (gs *goGenServ) HandleCast(message *etf.Term, state interface{}) (code int,
 func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interface{}) (code int, reply *etf.Term, stateout interface{}) {
 	inState := state.(State)
 	stateout = state
-	code = 1
-	replyTerm := etf.Term(etf.Tuple{etf.Atom("error"), etf.Atom("unknown_request")})
-	reply = &replyTerm
+	code = 0
+	fromPid := (*from)[0].(etf.Pid)
+	fromRef := (*from)[1]
 
-	switch req := (*message).(type) {
-	case etf.Atom:
-		switch string(req) {
-		case "pid":
-			replyTerm = etf.Term(etf.Pid(gs.Self))
-			return
-		}
-
-	case etf.Tuple:
-		if len(req) == 4 {
-			args := req[2].(string)
-			requestID := ""
-
-			if str, ok := req[3].(string); ok {
-				requestID = str
+	go func() {
+		replyTerm := etf.Term(etf.Tuple{etf.Atom("error"), etf.Atom("unknown_request")})
+		switch req := (*message).(type) {
+		case etf.Atom:
+			switch string(req) {
+			case "pid":
+				replyTerm = etf.Term(etf.Pid(gs.Self))
 			}
 
-			logger := log.With().Str("request_id", requestID).Logger()
+		case etf.Tuple:
+			if len(req) == 4 {
+				args := req[2].(string)
+				requestID := ""
 
-			var request Request
-			json.Unmarshal([]byte(args), &request)
-
-			var logMessage bytes.Buffer
-			logMessage.WriteString("Received message. Operations: [")
-			for i, operation := range request.Operations {
-				if i != 0 {
-					logMessage.WriteString(", ")
+				if str, ok := req[3].(string); ok {
+					requestID = str
 				}
-				switch operation.Operation {
-				case "insert":
-					logMessage.WriteString(fmt.Sprintf("{collection: %s, operation: %s}", operation.Collection, operation.Operation))
-				case "update_one":
-					logMessage.WriteString(fmt.Sprintf("{collection: %s, operation: %s, filter: %s}", operation.Collection, operation.Operation, operation.Filter))
-				case "upsert_one":
-					logMessage.WriteString(fmt.Sprintf("{collection: %s, operation: %s, filter: %s}", operation.Collection, operation.Operation, operation.Filter))
-				case "delete_one":
-					logMessage.WriteString(fmt.Sprintf("{collection: %s, operation: %s, filter: %s}", operation.Collection, operation.Operation, operation.Filter))
-				}
-			}
-			logMessage.WriteString("]")
-			logger.Warn().Msg(logMessage.String())
 
-			if len(request.Operations) == 0 {
-				replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), "No valid operations"})
-				return
-			}
-			client := inState.dbClient
-			ctx := inState.dbCtx
+				logger := log.With().Str("request_id", requestID).Logger()
+				logger.Info().Msgf("PID: %v", fromPid)
 
-			session, err := client.StartSession()
-			if err != nil {
-				logger.Warn().Msgf("Failed to start session: %s", err)
-				replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), "Failed to start session"})
-				return
-			}
-			logger.Debug().Msgf("Started session")
+				var request Request
+				json.Unmarshal([]byte(args), &request)
 
-			database := client.Database("medical_data")
-			concern := writeconcern.WMajority()
-			if DBWriteConcern != 0 {
-				concern = writeconcern.W(DBWriteConcern)
-			}
-
-			transactionFn := func(sctx mongo.SessionContext) error {
-				// Start a transaction in a session
-				err := sctx.StartTransaction(options.Transaction().
-					SetReadConcern(readconcern.Snapshot()).
-					SetWriteConcern(writeconcern.New(concern)),
-				)
-				if err != nil {
-					logger.Error().Msgf("Failed to start transaction")
-					replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), err.Error()})
-					return err
-				}
-				logger.Debug().Msgf("Started transaction")
-				auditLogCollection := database.Collection(AuditLogCollectionName)
-
-				for _, operation := range request.Operations {
-					collection := database.Collection(operation.Collection)
-					logger.Info().Msgf("Processing %s in %s collection", operation.Operation, operation.Collection)
-
+				var logMessage bytes.Buffer
+				logMessage.WriteString("Received message. Operations: [")
+				for i, operation := range request.Operations {
+					if i != 0 {
+						logMessage.WriteString(", ")
+					}
 					switch operation.Operation {
 					case "insert":
-						data, err := base64.StdEncoding.DecodeString(operation.Set)
-						if err != nil {
-							logger.Warn().Msgf("Invalid base64 string on insert: %s", operation.Set)
-							var buffer bytes.Buffer
-							buffer.WriteString("Invalid base64 string. ")
-							buffer.WriteString(err.Error())
-							replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
-							return err
-						}
-
-						var d interface{}
-						bson.Unmarshal(data, &d)
-						a, err := collection.InsertOne(sctx, d)
-						if err != nil {
-							logger.Warn().Msgf("Aborting transaction: %s", err.Error())
-							logger.Warn().Msgf("Failed args: %s", args)
-							sctx.AbortTransaction(sctx)
-							var buffer bytes.Buffer
-							buffer.WriteString("Aborting transaction. ")
-							buffer.WriteString(err.Error())
-							replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
-							return err
-						} else if AuditLogEnabled == "true" {
-							saveInsertAuditLog(sctx, auditLogCollection, operation, d, request.ActorID, request.PatientID, logger)
-						}
-						logger.Info().Msgf("Inserted: %s", a)
+						logMessage.WriteString(fmt.Sprintf("{collection: %s, operation: %s}", operation.Collection, operation.Operation))
 					case "update_one":
-						filter, err := base64.StdEncoding.DecodeString(operation.Filter)
-						if err != nil {
-							logger.Warn().Msgf("Invalid base64 string on filter update: %s", operation.Filter)
-							var buffer bytes.Buffer
-							buffer.WriteString("Invalid base64 string. ")
-							buffer.WriteString(err.Error())
-							replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
-							return err
-						}
-						set, err := base64.StdEncoding.DecodeString(operation.Set)
-						if err != nil {
-							logger.Warn().Msgf("Invalid base64 string on set update: %s", operation.Set)
-							var buffer bytes.Buffer
-							buffer.WriteString("Invalid base64 string. ")
-							buffer.WriteString(err.Error())
-							replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
-							return err
-						}
-
-						var f interface{}
-						bson.Unmarshal(filter, &f)
-						var s interface{}
-						bson.Unmarshal(set, &s)
-						a, err := collection.UpdateOne(sctx, f, s)
-						if err != nil {
-							logger.Warn().Msgf("Aborting transaction. %s", err.Error())
-							logger.Warn().Msgf("Failed args: %s", args)
-							sctx.AbortTransaction(sctx)
-							var buffer bytes.Buffer
-							buffer.WriteString("Aborting transaction. ")
-							buffer.WriteString(err.Error())
-							replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
-							return err
-						} else if AuditLogEnabled == "true" {
-							saveUpdateAuditLog(sctx, auditLogCollection, operation, f, s, request.ActorID, request.PatientID, a, logger)
-						}
-						logger.Info().Msgf("Matched: %d, Modified: %d", a.MatchedCount, a.ModifiedCount)
+						logMessage.WriteString(fmt.Sprintf("{collection: %s, operation: %s, filter: %s}", operation.Collection, operation.Operation, operation.Filter))
 					case "upsert_one":
-						filter, err := base64.StdEncoding.DecodeString(operation.Filter)
-						if err != nil {
-							logger.Warn().Msgf("Invalid base64 string on filter upsert: %s", operation.Filter)
-							var buffer bytes.Buffer
-							buffer.WriteString("Invalid base64 string. ")
-							buffer.WriteString(err.Error())
-							replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
-							return err
-						}
-						set, err := base64.StdEncoding.DecodeString(operation.Set)
-						if err != nil {
-							logger.Warn().Msgf("Invalid base64 string on set upsert: %s", operation.Set)
-							var buffer bytes.Buffer
-							buffer.WriteString("Invalid base64 string. ")
-							buffer.WriteString(err.Error())
-							replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
-							return err
-						}
-
-						var f interface{}
-						bson.Unmarshal(filter, &f)
-						var s interface{}
-						bson.Unmarshal(set, &s)
-						var upsert = true
-						var upsertOptions = options.UpdateOptions{Upsert: &upsert}
-						a, err := collection.UpdateOne(sctx, f, s, &upsertOptions)
-						if err != nil {
-							logger.Warn().Msgf("Aborting transaction. %s", err.Error())
-							logger.Warn().Msgf("Failed args: %s", args)
-							sctx.AbortTransaction(sctx)
-							var buffer bytes.Buffer
-							buffer.WriteString("Aborting transaction. ")
-							buffer.WriteString(err.Error())
-							replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
-							return err
-						} else if AuditLogEnabled == "true" {
-							saveUpdateAuditLog(sctx, auditLogCollection, operation, f, s, request.ActorID, request.PatientID, a, logger)
-						}
-						logger.Info().Msgf("Matched: %d, Modified: %d, Upserted: %d", a.MatchedCount, a.ModifiedCount, a.UpsertedCount)
+						logMessage.WriteString(fmt.Sprintf("{collection: %s, operation: %s, filter: %s}", operation.Collection, operation.Operation, operation.Filter))
 					case "delete_one":
-						filter, err := base64.StdEncoding.DecodeString(operation.Filter)
-						if err != nil {
-							logger.Warn().Msgf("Invalid base64 string on delete: %s", operation.Filter)
-							var buffer bytes.Buffer
-							buffer.WriteString("Invalid base64 string. ")
-							buffer.WriteString(err.Error())
-							replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
-							return err
-						}
-
-						var f interface{}
-						bson.Unmarshal(filter, &f)
-						a, err := collection.DeleteOne(sctx, f)
-						if err != nil {
-							logger.Warn().Msgf("Aborting transaction: %s", err.Error())
-							logger.Warn().Msgf("Failed args: %s", args)
-							sctx.AbortTransaction(sctx)
-							var buffer bytes.Buffer
-							buffer.WriteString("Aborting transaction. ")
-							buffer.WriteString(err.Error())
-							replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
-							return err
-						} else if AuditLogEnabled == "true" {
-							saveDeleteAuditLog(sctx, auditLogCollection, operation, f, request.ActorID, logger)
-						}
-						logger.Info().Msgf("Deleted: %d", a.DeletedCount)
-					default:
-						logger.Info().Msgf("Invalid operation")
+						logMessage.WriteString(fmt.Sprintf("{collection: %s, operation: %s, filter: %s}", operation.Collection, operation.Operation, operation.Filter))
 					}
 				}
+				logMessage.WriteString("]")
+				logger.Warn().Msg(logMessage.String())
 
-				// Committing transaction
-				for {
-					err = sctx.CommitTransaction(sctx)
-					switch e := err.(type) {
-					case nil:
-						return nil
-					case mongo.CommandError:
-						if e.HasErrorLabel("UnknownTransactionCommitResult") {
-							continue
-						}
-						replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), err.Error()})
-						return err
-					default:
+				if len(request.Operations) == 0 {
+					replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), "No valid operations"})
+					return
+				}
+				client := inState.dbClient
+				ctx := inState.dbCtx
+
+				session, err := client.StartSession()
+				if err != nil {
+					logger.Warn().Msgf("Failed to start session: %s", err)
+					replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), "Failed to start session"})
+					sendResponse(gs, fromPid, fromRef, replyTerm)
+					return
+				}
+				logger.Debug().Msgf("Started session")
+
+				database := client.Database("medical_data")
+				concern := writeconcern.WMajority()
+				if DBWriteConcern != 0 {
+					concern = writeconcern.W(DBWriteConcern)
+				}
+
+				transactionFn := func(sctx mongo.SessionContext) error {
+					// Start a transaction in a session
+					err := sctx.StartTransaction(options.Transaction().
+						SetReadConcern(readconcern.Snapshot()).
+						SetWriteConcern(writeconcern.New(concern)),
+					)
+					if err != nil {
+						logger.Error().Msgf("Failed to start transaction: %s", err)
 						replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), err.Error()})
 						return err
 					}
+					logger.Debug().Msgf("Started transaction")
+					auditLogCollection := database.Collection(AuditLogCollectionName)
+
+					for _, operation := range request.Operations {
+						collection := database.Collection(operation.Collection)
+						logger.Info().Msgf("Processing %s in %s collection", operation.Operation, operation.Collection)
+
+						switch operation.Operation {
+						case "insert":
+							data, err := base64.StdEncoding.DecodeString(operation.Set)
+							if err != nil {
+								logger.Warn().Msgf("Invalid base64 string on insert: %s", operation.Set)
+								var buffer bytes.Buffer
+								buffer.WriteString("Invalid base64 string. ")
+								buffer.WriteString(err.Error())
+								replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
+								return err
+							}
+
+							var d interface{}
+							bson.Unmarshal(data, &d)
+							a, err := collection.InsertOne(sctx, d)
+							if err != nil {
+								logger.Warn().Msgf("Aborting transaction: %s", err.Error())
+								logger.Warn().Msgf("Failed args: %s", args)
+								sctx.AbortTransaction(sctx)
+								var buffer bytes.Buffer
+								buffer.WriteString("Aborting transaction. ")
+								buffer.WriteString(err.Error())
+								replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
+								return err
+							} else if AuditLogEnabled == "true" {
+								saveInsertAuditLog(sctx, auditLogCollection, operation, d, request.ActorID, request.PatientID, logger)
+							}
+							logger.Info().Msgf("Inserted: %s", a)
+						case "update_one":
+							filter, err := base64.StdEncoding.DecodeString(operation.Filter)
+							if err != nil {
+								logger.Warn().Msgf("Invalid base64 string on filter update: %s", operation.Filter)
+								var buffer bytes.Buffer
+								buffer.WriteString("Invalid base64 string. ")
+								buffer.WriteString(err.Error())
+								replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
+								return err
+							}
+							set, err := base64.StdEncoding.DecodeString(operation.Set)
+							if err != nil {
+								logger.Warn().Msgf("Invalid base64 string on set update: %s", operation.Set)
+								var buffer bytes.Buffer
+								buffer.WriteString("Invalid base64 string. ")
+								buffer.WriteString(err.Error())
+								replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
+								return err
+							}
+
+							var f interface{}
+							bson.Unmarshal(filter, &f)
+							var s interface{}
+							bson.Unmarshal(set, &s)
+							a, err := collection.UpdateOne(sctx, f, s)
+							if err != nil {
+								logger.Warn().Msgf("Aborting transaction. %s", err.Error())
+								logger.Warn().Msgf("Failed args: %s", args)
+								sctx.AbortTransaction(sctx)
+								var buffer bytes.Buffer
+								buffer.WriteString("Aborting transaction. ")
+								buffer.WriteString(err.Error())
+								replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
+								return err
+							} else if AuditLogEnabled == "true" {
+								saveUpdateAuditLog(sctx, auditLogCollection, operation, f, s, request.ActorID, request.PatientID, a, logger)
+							}
+							logger.Info().Msgf("Matched: %d, Modified: %d", a.MatchedCount, a.ModifiedCount)
+						case "upsert_one":
+							filter, err := base64.StdEncoding.DecodeString(operation.Filter)
+							if err != nil {
+								logger.Warn().Msgf("Invalid base64 string on filter upsert: %s", operation.Filter)
+								var buffer bytes.Buffer
+								buffer.WriteString("Invalid base64 string. ")
+								buffer.WriteString(err.Error())
+								replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
+								return err
+							}
+							set, err := base64.StdEncoding.DecodeString(operation.Set)
+							if err != nil {
+								logger.Warn().Msgf("Invalid base64 string on set upsert: %s", operation.Set)
+								var buffer bytes.Buffer
+								buffer.WriteString("Invalid base64 string. ")
+								buffer.WriteString(err.Error())
+								replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
+								return err
+							}
+
+							var f interface{}
+							bson.Unmarshal(filter, &f)
+							var s interface{}
+							bson.Unmarshal(set, &s)
+							var upsert = true
+							var upsertOptions = options.UpdateOptions{Upsert: &upsert}
+							a, err := collection.UpdateOne(sctx, f, s, &upsertOptions)
+							if err != nil {
+								logger.Warn().Msgf("Aborting transaction. %s", err.Error())
+								logger.Warn().Msgf("Failed args: %s", args)
+								sctx.AbortTransaction(sctx)
+								var buffer bytes.Buffer
+								buffer.WriteString("Aborting transaction. ")
+								buffer.WriteString(err.Error())
+								replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
+								return err
+							} else if AuditLogEnabled == "true" {
+								saveUpdateAuditLog(sctx, auditLogCollection, operation, f, s, request.ActorID, request.PatientID, a, logger)
+							}
+							logger.Info().Msgf("Matched: %d, Modified: %d, Upserted: %d", a.MatchedCount, a.ModifiedCount, a.UpsertedCount)
+						case "delete_one":
+							filter, err := base64.StdEncoding.DecodeString(operation.Filter)
+							if err != nil {
+								logger.Warn().Msgf("Invalid base64 string on delete: %s", operation.Filter)
+								var buffer bytes.Buffer
+								buffer.WriteString("Invalid base64 string. ")
+								buffer.WriteString(err.Error())
+								replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
+								return err
+							}
+
+							var f interface{}
+							bson.Unmarshal(filter, &f)
+							a, err := collection.DeleteOne(sctx, f)
+							if err != nil {
+								logger.Warn().Msgf("Aborting transaction: %s", err.Error())
+								logger.Warn().Msgf("Failed args: %s", args)
+								sctx.AbortTransaction(sctx)
+								var buffer bytes.Buffer
+								buffer.WriteString("Aborting transaction. ")
+								buffer.WriteString(err.Error())
+								replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), buffer.String()})
+								return err
+							} else if AuditLogEnabled == "true" {
+								saveDeleteAuditLog(sctx, auditLogCollection, operation, f, request.ActorID, logger)
+							}
+							logger.Info().Msgf("Deleted: %d", a.DeletedCount)
+						default:
+							logger.Info().Msgf("Invalid operation")
+						}
+					}
+
+					// Committing transaction
+					for {
+						err = sctx.CommitTransaction(sctx)
+						switch e := err.(type) {
+						case nil:
+							return nil
+						case mongo.CommandError:
+							if e.HasErrorLabel("UnknownTransactionCommitResult") {
+								continue
+							}
+							logger.Info().Msgf("Retry transaction: %s", err)
+							replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), err.Error()})
+							return err
+						default:
+							replyTerm = etf.Term(etf.Tuple{etf.Atom("error"), err.Error()})
+							return err
+						}
+					}
 				}
-			}
 
-			err = mongo.WithSession(ctx, session, func(sctx mongo.SessionContext) error {
-				return runTransactionWithRetry(sctx, transactionFn)
-			})
+				err = mongo.WithSession(ctx, session, func(sctx mongo.SessionContext) error {
+					return runTransactionWithRetry(sctx, transactionFn)
+				})
 
-			session.EndSession(ctx)
-			if err == nil {
-				replyTerm = etf.Term(etf.Atom("ok"))
+				session.EndSession(ctx)
+				if err == nil {
+					replyTerm = etf.Term(etf.Atom("ok"))
+				}
 			}
 		}
-	}
+
+		sendResponse(gs, fromPid, fromRef, replyTerm)
+		return
+	}()
+
+	return
+}
+
+func sendResponse(gs *goGenServ, fromPid etf.Pid, fromRef etf.Term, replyTerm etf.Term) {
+	rep := etf.Term(etf.Tuple{fromRef, replyTerm})
+	gs.Send(fromPid, &rep)
 	return
 }
 
@@ -412,6 +427,7 @@ func runTransactionWithRetry(sctx mongo.SessionContext, txnFn func(mongo.Session
 			return nil
 		}
 
+		sctx.AbortTransaction(sctx)
 		// If transient error, retry the whole transaction
 		if cmdErr, ok := err.(mongo.CommandError); ok && cmdErr.HasErrorLabel("TransientTransactionError") {
 			continue
