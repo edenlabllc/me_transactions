@@ -134,7 +134,7 @@ func (gs *goGenServ) HandleCast(message *etf.Term, state interface{}) (code int,
 	case etf.Atom:
 		switch string(req) {
 		case "check":
-			logger.Info().Msgf("Received health check message")
+			logger.Debug().Msgf("Received health check message")
 			f, err := os.Create(healthCheckPath)
 			if err != nil {
 				logger.Warn().Msgf("Can't create health check file")
@@ -173,7 +173,6 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 				}
 
 				logger := log.With().Str("request_id", requestID).Logger()
-				logger.Info().Msgf("PID: %v", fromPid)
 
 				var request Request
 				json.Unmarshal([]byte(args), &request)
@@ -236,7 +235,7 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 
 					for _, operation := range request.Operations {
 						collection := database.Collection(operation.Collection)
-						logger.Info().Msgf("Processing %s in %s collection", operation.Operation, operation.Collection)
+						logger.Debug().Msgf("Processing %s in %s collection", operation.Operation, operation.Collection)
 
 						switch operation.Operation {
 						case "insert":
