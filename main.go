@@ -427,7 +427,6 @@ func runTransactionWithRetry(sctx mongo.SessionContext, txnFn func(mongo.Session
 			return nil
 		}
 
-		sctx.AbortTransaction(sctx)
 		// If transient error, retry the whole transaction
 		if cmdErr, ok := err.(mongo.CommandError); ok && cmdErr.HasErrorLabel("TransientTransactionError") {
 			continue
