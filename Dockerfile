@@ -14,14 +14,7 @@ RUN dep ensure -vendor-only
 
 RUN go build -o /src/${APP_NAME}_build main.go
 
-FROM erlang:21.2.5-alpine
-
-RUN apk update && apk add --no-cache \
-  ncurses-libs \
-  zlib \
-  ca-certificates \
-  openssl \
-  bash
+FROM alpine:3.9
 
 RUN rm -rf /var/cache/apk/*
 
