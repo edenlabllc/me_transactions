@@ -17,7 +17,6 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
-	"go.mongodb.org/mongo-driver/mongo/readconcern"
 	"go.mongodb.org/mongo-driver/mongo/writeconcern"
 
 	"github.com/rs/zerolog"
@@ -222,7 +221,6 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 				transactionFn := func(sctx mongo.SessionContext) error {
 					// Start a transaction in a session
 					err := sctx.StartTransaction(options.Transaction().
-						SetReadConcern(readconcern.Snapshot()).
 						SetWriteConcern(writeconcern.New(concern)),
 					)
 					if err != nil {
@@ -616,7 +614,7 @@ func main() {
 	flag.Parse()
 
 	// Initialize new node with given name and cookie
-	n := ergonode.Create(NodeName, uint16(EpmdPort), Cookie)
+	n := ergonode.Create(NodeName, Cookie)
 	log.Info().Msg("Started erlang node")
 
 	pg2CompleteChan := make(chan bool)
