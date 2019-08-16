@@ -56,7 +56,7 @@ var (
 	mongoURL               string
 	healthCheckPath        string
 	SrvName                string
-	DBPoolSize             uint16
+	DBPoolSize             uint64
 	DBWriteConcern         int
 	AuditLogCollectionName string
 	AuditLogEnabled        string
@@ -533,12 +533,12 @@ func init() {
 	dbPoolSize := os.Getenv("DB_POOL_SIZE")
 	if dbPoolSize != "" {
 		var base = 10
-		var size = 16
+		var size = 64
 		a, err := strconv.ParseUint(dbPoolSize, base, size)
 		if err != nil {
 			panic("Invalid pool size")
 		}
-		DBPoolSize = uint16(a)
+		DBPoolSize = uint64(a)
 	} else {
 		DBPoolSize = 50
 	}
