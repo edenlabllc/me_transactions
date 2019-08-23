@@ -44,7 +44,6 @@ type Operation struct {
 	Collection string `json:"collection"`
 	Filter     string `json:"filter"`
 	Set        string `json:"set"`
-	Id         string `json:"id"`
 }
 type Request struct {
 	ActorID    string      `json:"actor_id"`
