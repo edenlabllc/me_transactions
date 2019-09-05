@@ -48,8 +48,10 @@ func (gs *goGenServ) HandleCall(from *etf.Tuple, message *etf.Term, state interf
 		if len(request.Operations) == 0 {
 			return codeOne, &errorReplyTerm, state
 		}
-		rsp, err := gs.srv.HandleCall(context.TODO(), &request, logger)
+		rsp, err := gs.srv.HandleCall(context.Background(), &request, logger)
 		if err != nil {
+			logger.Warn().Msgf("Aborting transaction: %s", err.Error())
+			logger.Warn().Msgf("Failed args: %s", args)
 			logger.Error().Msg(err.Error())
 			rpl := etf.Term(etf.Tuple{etf.Atom("error"), rsp})
 			return codeOne, &rpl, state
@@ -82,5 +84,5 @@ func logAllOps(req entity.Request, logger zerolog.Logger) {
 		}
 	}
 	logMessage.WriteString("]")
-	logger.Warn().Msg(logMessage.String())
+	logger.Info().Msg(logMessage.String())
 }

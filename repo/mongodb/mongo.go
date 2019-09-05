@@ -26,12 +26,12 @@ func (repo *meTransactionRepo) SaveAuditLog(sctx mongo.SessionContext, log *mode
 	return nil
 }
 
-func (repo *meTransactionRepo) InsertToProvidedCollection(sctx mongo.SessionContext, collection string, data interface{}) error {
-	_, err := repo.db.Collection(collection).InsertOne(sctx, data)
+func (repo *meTransactionRepo) InsertToProvidedCollection(sctx mongo.SessionContext, collection string, data interface{}) (*mongo.InsertOneResult, error) {
+	ir, err := repo.db.Collection(collection).InsertOne(sctx, data)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return ir, nil
 
 }
 
@@ -44,12 +44,12 @@ func (repo *meTransactionRepo) UpdateProvidedCollection(sctx mongo.SessionContex
 
 }
 
-func (repo *meTransactionRepo) DeleteFromProvidedCollection(sctx mongo.SessionContext, collection string, filter interface{}) error {
-	_, err := repo.db.Collection(collection).DeleteOne(sctx, filter)
+func (repo *meTransactionRepo) DeleteFromProvidedCollection(sctx mongo.SessionContext, collection string, filter interface{}) (*mongo.DeleteResult, error) {
+	dr, err := repo.db.Collection(collection).DeleteOne(sctx, filter)
 	if err != nil {
-		return err
+		return dr, err
 	}
-	return nil
+	return dr, nil
 }
 
 func (repo *meTransactionRepo) StartSession() (mongo.Session, error) {
