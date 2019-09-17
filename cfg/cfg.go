@@ -3,8 +3,6 @@ package cfg
 import (
 	"flag"
 
-	"github.com/rs/zerolog/log"
-
 	"github.com/caarlos0/env"
 )
 
@@ -32,7 +30,6 @@ func ConfigFromEnv() (*Config, error) {
 		return nil, err
 	}
 	cfgFromFlags(c)
-	log.Printf("CFG : %+v", c)
 	return c, nil
 }
 
